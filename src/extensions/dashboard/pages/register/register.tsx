@@ -1,18 +1,18 @@
 import type { FC } from "react";
 import { Page, WixDesignSystemProvider } from "@wix/design-system";
 import "../../../../styles/globals.css";
-import MipsDashboard from "../../../../components/dashboard";
+import Register from "@/components/register/register";
 
-const DashboardPage: FC = () => {
+const RegisterPage: FC = () => {
   return (
     <WixDesignSystemProvider features={{ newColorsBranding: true }}>
       <Page.Content>
         <div className="h-screen flex items-center justify-center w-full">
-          <MipsDashboard />
+          <Register />
         </div>
       </Page.Content>
     </WixDesignSystemProvider>
   );
 };
 
-export default DashboardPage;
+export default RegisterPage;

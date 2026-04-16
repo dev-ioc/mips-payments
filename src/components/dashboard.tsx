@@ -1,8 +1,17 @@
 import React, { useState, useEffect } from "react";
 import { dashboard } from "@wix/dashboard";
-import { httpClient } from "@wix/essentials";
 
-const BACKEND = "https://your-backend-domain.com";
+declare global {
+  interface Window {
+    wix: any;
+    wixEssentials: any;
+    Wix: any;
+  }
+}
+
+const BACKEND = import.meta.env.PROD
+  ? "https://ton-backend-prod.com"
+  : "http://localhost:3000";
 
 // Types
 type Credentials = {
@@ -63,69 +72,228 @@ export default function MipsDashboard(): JSX.Element {
     "all" | "success" | "pending" | "failed"
   >("all");
   const [siteId, setSiteId] = useState<string>("");
+  const [authToken, setAuthToken] = useState<string>("");
+
+  // Fonction pour récupérer le token Wix
+  const getWixToken = async (): Promise<string> => {
+    try {
+      // Méthode 1: Via window.wix (le plus courant)
+      if (window.wix && window.wix.auth) {
+        const token = await window.wix.auth.getAccessToken();
+        if (token) return token;
+      }
+
+      // Méthode 2: Via window.wixEssentials
+      if (window.wixEssentials && window.wixEssentials.auth) {
+        const token = await window.wixEssentials.auth.getAccessToken();
+        if (token) return token;
+      }
+
+      // Méthode 3: Via l'API dashboard Wix
+      const token = await dashboard.getAccessToken();
+      if (token) return token;
+
+      console.warn("Aucun token d'authentification trouvé");
+      return "";
+    } catch (error) {
+      console.error("Erreur lors de la récupération du token:", error);
+      return "";
+    }
+  };
 
   useEffect(() => {
-    dashboard
-      .getPageUrl()
-      .then((url: string) => {
+    const initialize = async () => {
+      try {
+        // Récupérer le token d'authentification
+        const token = await getWixToken();
+        setAuthToken(token);
+
+        // Récupérer l'ID du site
+        const url = await dashboard.getPageUrl({ pageId: "home" });
         const params = new URLSearchParams(new URL(url).search);
         const sid = params.get("siteId") || "demo-site";
         setSiteId(sid);
-        loadCredentials(sid);
-        loadPayments(sid, "all");
-      })
-      .catch(() => {
+
+        console.log("Site ID:", sid);
+        console.log("Token présent:", !!token);
+
+        // Charger les données
+        await Promise.all([
+          loadCredentials(sid, token),
+          loadPayments(sid, "all", token),
+        ]);
+      } catch (error) {
+        console.error("Erreur initialisation:", error);
         const sid = "demo-site";
         setSiteId(sid);
-        loadCredentials(sid);
-        loadPayments(sid, "all");
-      });
+        await Promise.all([
+          loadCredentials(sid, ""),
+          loadPayments(sid, "all", ""),
+        ]);
+      }
+    };
+
+    initialize();
   }, []);
 
-  async function loadCredentials(sid: string): Promise<void> {
+  async function loadCredentials(sid: string, token: string): Promise<void> {
     try {
-      const r = await fetch(
+      console.log("Chargement credentials pour site:", sid);
+
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
+      const response = await fetch(
         `${BACKEND}/api/merchant/get-credentials?wix_site_id=${sid}`,
+        {
+          method: "GET",
+          headers: headers,
+        },
       );
-      const data = await r.json();
+
+      console.log("Status réponse credentials:", response.status);
+
+      if (!response.ok) {
+        if (response.status === 401) {
+          console.log("Non authentifié");
+          return;
+        }
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Réponse credentials:", data);
+
       if (data.configured && data.merchant) {
-        setCredentials((prev) => ({ ...prev, ...data.merchant }));
+        setCredentials((prev) => ({
+          ...prev,
+          id_merchant: data.merchant.id_merchant || "",
+          id_entity: data.merchant.id_entity || "",
+          id_operator: data.merchant.id_operator || "",
+          currency: data.merchant.currency || "MUR",
+          operator_password: "",
+        }));
       }
     } catch (e) {
-      console.error(e);
+      console.error("Erreur chargement credentials:", e);
     }
   }
 
-  async function loadPayments(sid: string, status: string): Promise<void> {
+  async function loadPayments(
+    sid: string,
+    status: string,
+    token: string,
+  ): Promise<void> {
     setLoading(true);
     try {
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+
+      if (token) {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
+
       const url = `${BACKEND}/api/payments?wix_site_id=${sid}&status=${status}&limit=50`;
-      const r = await fetch(url);
-      const data = await r.json();
+      console.log("Chargement paiements:", url);
+
+      const response = await fetch(url, { headers });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Réponse paiements:", data);
+
       setPayments(data.payments || []);
       setSummary(data.summary || {});
     } catch (e) {
-      console.error(e);
+      console.error("Erreur chargement paiements:", e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   async function saveCredentials(): Promise<void> {
+    if (!credentials.id_merchant.trim()) {
+      setSaveMsg("❌ L'ID Merchant est requis");
+      return;
+    }
+    if (!credentials.id_entity.trim()) {
+      setSaveMsg("❌ L'ID Entity est requis");
+      return;
+    }
+    if (!credentials.id_operator.trim()) {
+      setSaveMsg("❌ L'ID Operator est requis");
+      return;
+    }
+    if (!credentials.operator_password.trim()) {
+      setSaveMsg("❌ Le Operator Password est requis");
+      return;
+    }
+
     setLoading(true);
     setSaveMsg("");
+
     try {
-      const r = await fetch(`${BACKEND}/api/merchant/save-credentials`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ wix_site_id: siteId, ...credentials }),
+      const headers: HeadersInit = {
+        "Content-Type": "application/json",
+      };
+
+      if (authToken) {
+        headers["Authorization"] = `Bearer ${authToken}`;
+      }
+
+      console.log("Envoi des credentials:", {
+        wix_site_id: siteId,
+        ...credentials,
       });
-      const data = await r.json();
-      if (data.success) setSaveMsg("✅ Credentials sauvegardés avec succès !");
-      else setSaveMsg("❌ Erreur : " + data.error);
-    } catch {
-      setSaveMsg("❌ Erreur réseau");
+
+      const response = await fetch(`${BACKEND}/api/merchant/save-credentials`, {
+        method: "POST",
+        headers: headers,
+        body: JSON.stringify({
+          wix_site_id: siteId,
+          ...credentials,
+        }),
+      });
+
+      console.log("Status réponse:", response.status);
+
+      if (response.status === 401) {
+        setSaveMsg("❌ Veuillez vous reconnecter");
+        return;
+      }
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      console.log("Réponse:", data);
+
+      if (data.success) {
+        setSaveMsg("✅ Credentials sauvegardés avec succès !");
+        setTimeout(() => loadCredentials(siteId, authToken), 1000);
+        setCredentials((prev) => ({ ...prev, operator_password: "" }));
+      } else {
+        setSaveMsg(`❌ Erreur : ${data.error || "Erreur inconnue"}`);
+      }
+    } catch (error) {
+      console.error("Erreur réseau:", error);
+      setSaveMsg(
+        `❌ Erreur: ${error instanceof Error ? error.message : "Impossible de contacter le serveur"}`,
+      );
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   const statusBadge = (status: string): JSX.Element => {
@@ -168,6 +336,7 @@ export default function MipsDashboard(): JSX.Element {
       </span>
     );
   };
+
   return (
     <div
       style={{
@@ -225,7 +394,7 @@ export default function MipsDashboard(): JSX.Element {
         {["payments", "credentials"].map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => setTab(t as "payments" | "credentials")}
             style={{
               padding: "8px 20px",
               borderRadius: 8,
@@ -244,10 +413,9 @@ export default function MipsDashboard(): JSX.Element {
         ))}
       </div>
 
-      {/* ===== TAB: PAYMENTS ===== */}
+      {/* TAB: PAYMENTS */}
       {tab === "payments" && (
         <>
-          {/* Stats */}
           <div
             style={{
               display: "grid",
@@ -306,14 +474,13 @@ export default function MipsDashboard(): JSX.Element {
             ))}
           </div>
 
-          {/* Filtres */}
           <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-            {["all", "success", "pending", "failed"].map((s) => (
+            {(["all", "success", "pending", "failed"] as const).map((s) => (
               <button
                 key={s}
                 onClick={() => {
                   setFilterStatus(s);
-                  loadPayments(siteId, s);
+                  loadPayments(siteId, s, authToken);
                 }}
                 style={{
                   padding: "6px 16px",
@@ -336,7 +503,7 @@ export default function MipsDashboard(): JSX.Element {
               </button>
             ))}
             <button
-              onClick={() => loadPayments(siteId, filterStatus)}
+              onClick={() => loadPayments(siteId, filterStatus, authToken)}
               style={{
                 marginLeft: "auto",
                 padding: "6px 16px",
@@ -352,7 +519,6 @@ export default function MipsDashboard(): JSX.Element {
             </button>
           </div>
 
-          {/* Table */}
           <div
             style={{
               background: COLORS.card,
@@ -490,7 +656,7 @@ export default function MipsDashboard(): JSX.Element {
         </>
       )}
 
-      {/* ===== TAB: CREDENTIALS ===== */}
+      {/* TAB: CREDENTIALS */}
       {tab === "credentials" && (
         <div style={{ maxWidth: 560 }}>
           <div
@@ -512,22 +678,22 @@ export default function MipsDashboard(): JSX.Element {
 
             {[
               {
-                key: "id_merchant",
+                key: "id_merchant" as const,
                 label: "ID Merchant",
                 placeholder: "q7r79YV13Xji...",
               },
               {
-                key: "id_entity",
+                key: "id_entity" as const,
                 label: "ID Entity",
                 placeholder: "Dem1091uOLSI...",
               },
               {
-                key: "id_operator",
+                key: "id_operator" as const,
                 label: "ID Operator",
                 placeholder: "w8kvu7ShJrbR...",
               },
               {
-                key: "operator_password",
+                key: "operator_password" as const,
                 label: "Operator Password",
                 placeholder: "••••••••••••",
                 type: "password",
@@ -564,7 +730,6 @@ export default function MipsDashboard(): JSX.Element {
                     outline: "none",
                     fontFamily: "monospace",
                     boxSizing: "border-box",
-                    transition: "border-color 0.2s",
                   }}
                 />
               </div>
@@ -633,7 +798,6 @@ export default function MipsDashboard(): JSX.Element {
                 fontSize: 15,
                 fontWeight: 700,
                 cursor: loading ? "not-allowed" : "pointer",
-                transition: "background 0.2s",
               }}
             >
               {loading ? "Sauvegarde..." : "💾 Sauvegarder les credentials"}
@@ -650,12 +814,10 @@ export default function MipsDashboard(): JSX.Element {
               }}
             >
               <strong>🔒 Sécurité :</strong> Vos credentials sont chiffrés et
-              stockés de manière sécurisée dans Supabase. Ne partagez jamais
-              votre Operator Password.
+              stockés de manière sécurisée dans Supabase.
             </div>
           </div>
 
-          {/* Webhook info */}
           <div
             style={{
               background: COLORS.card,
@@ -683,7 +845,7 @@ export default function MipsDashboard(): JSX.Element {
                 color: COLORS.primary,
               }}
             >
-              https://your-backend-domain.com/api/webhook
+              {BACKEND}/api/webhook
             </code>
           </div>
         </div>

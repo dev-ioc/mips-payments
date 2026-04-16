@@ -2,12 +2,11 @@
 
 import { useForm } from "react-hook-form";
 import * as z from "zod";
-
-import { Button } from "../ui/button";
 import { useState } from "react";
 import toast, { Toaster } from "react-hot-toast";
 import { Loader2 } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { Button } from "./ui/button";
 
 const schema = z.object({
   email: z.string().email("Email invalide"),
@@ -58,7 +57,7 @@ const Login = () => {
       if (result.token) {
         localStorage.setItem("token", result.token);
       }
-      window.location.href = "/credentials";
+      window.location.href = "/dashboard";
     } catch (error) {
       console.error(error);
       setErrorMsg("Erreur serveur");

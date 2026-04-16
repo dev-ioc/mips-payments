@@ -1,8 +1,8 @@
 import { extensions } from "@wix/astro/builders";
 
 export default extensions.customElement({
-  id: "16c272a2-aea2-4377-b34c-aabdfa549a88",
-  name: "mips-button-widget",
+  id: "70c4a12d-f5cb-4edc-870b-bfca1644cb63",
+  name: "Bouton MiPS Payment",
   width: {
     defaultWidth: 450,
     allowStretch: true,
@@ -15,15 +15,14 @@ export default extensions.customElement({
   },
   presets: [
     {
-      id: "ee662c93-8cf3-4f80-956f-65597310a785",
+      id: "a6510852-6f61-4466-8d42-a619af9ddd6e",
       name: "default",
       thumbnailUrl: "{{BASE_URL}}/mips-logo.png",
     },
   ],
 
-  tagName: "mips-button-widget",
-  element:
-    "./extensions/site/widgets/mips-button-widget/mips-button-widget.tsx",
+  tagName: "mips-pay-button",
+  element: "./extensions/site/widgets/mips-pay-button/mips-pay-button.tsx",
   settings:
-    "./extensions/site/widgets/mips-button-widget/mips-button-widget.panel.tsx",
+    "./extensions/site/widgets/mips-pay-button/mips-pay-button.panel.tsx",
 });
