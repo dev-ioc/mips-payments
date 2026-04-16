@@ -1,0 +1,20 @@
+{
+  "version": 1,
+  "skills": {
+    "wds-docs": {
+      "source": "wix/skills",
+      "sourceType": "github",
+      "computedHash": "459c543957d665bf0850c52f2983baae26c63c5a8a62627acf70a26b70f64302"
+    },
+    "wix-app": {
+      "source": "wix/skills",
+      "sourceType": "github",
+      "computedHash": "a03cdb608cfa3ecfa6900f83cbccc44cee614f4c89d5142e8d6672f4e487d29f"
+    },
+    "wix-manage": {
+      "source": "wix/skills",
+      "sourceType": "github",
+      "computedHash": "19b60f0960577053db4acf27b819999c67e19c0eddfda4a61bea28b47e0c7f64"
+    }
+  }
+}
