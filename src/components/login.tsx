@@ -8,6 +8,9 @@ import { Loader2 } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "./ui/button";
 
+// Utilisez la même URL que votre backend MiPS
+const BACKEND = "http://localhost:3000";
+
 const schema = z.object({
   email: z.string().email("Email invalide"),
   password: z.string().min(6, "Minimum 6 caractères"),
@@ -30,7 +33,10 @@ const Login = () => {
     setIsSaving(true);
     try {
       setErrorMsg("");
-      const res = await fetch("http://localhost:3000/api/login", {
+
+      console.log("Tentative de connexion à:", `${BACKEND}/api/login`);
+
+      const res = await fetch(`${BACKEND}/api/login`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -42,6 +48,8 @@ const Login = () => {
       });
 
       const result = await res.json();
+      console.log("Réponse:", result);
+
       if (res.status === 404) {
         toast.error("Utilisateur introuvable");
         return;
@@ -57,14 +65,15 @@ const Login = () => {
       if (result.token) {
         localStorage.setItem("token", result.token);
       }
-      window.location.href = "/dashboard";
+      window.location.href = "/credentialls-page";
     } catch (error) {
-      console.error(error);
-      setErrorMsg("Erreur serveur");
+      console.error("Erreur de connexion:", error);
+      setErrorMsg("Erreur serveur - Vérifiez que le backend est accessible");
     } finally {
       setIsSaving(false);
     }
   };
+
   return (
     <div className="min-h-screen w-full flex relative">
       {isSaving && (
@@ -86,7 +95,7 @@ const Login = () => {
         <div className="relative">
           <div className="w-300 h-200 flex items-center justify-left">
             <img
-              src="/mips-logo.png"
+              src="mips-logo.png"
               alt="MIPS Payment"
               className="w-400 h-500 object-contain"
             />
@@ -145,11 +154,11 @@ const Login = () => {
                 placeholder="Mot de passe"
                 {...register("password")}
                 className="
-      w-full border-b-2 border-slate-200 bg-transparent
-      px-0 py-3 pr-8 text-sm text-slate-800 placeholder:text-slate-400
-      focus:border-[#2B2FDE] focus:ring-0 focus:outline-none
-      transition-colors duration-200
-    "
+                  w-full border-b-2 border-slate-200 bg-transparent
+                  px-0 py-3 pr-8 text-sm text-slate-800 placeholder:text-slate-400
+                  focus:border-[#2B2FDE] focus:ring-0 focus:outline-none
+                  transition-colors duration-200
+                "
               />
               <button
                 type="button"
