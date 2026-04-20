@@ -91,56 +91,95 @@ const CredentialsPage = () => {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [siteId, setSiteId] = useState<string>("");
+  const [siteId, setSiteId] = useState<string>(
+    "3d72081f-c317-4793-8908-49e61bfcae47",
+  );
   const [authToken, setAuthToken] = useState<string>("");
-  const [tokenReady, setTokenReady] = useState<boolean>(false);
+  const [isInitializing, setIsInitializing] = useState(true);
 
-  useEffect(() => {
-    const handleMessage = (event: MessageEvent) => {
-      const allowedOrigin = import.meta.env.PROD
-        ? "https://ton-domaine-prod.com"
-        : "http://localhost:4321";
-
-      if (event.origin !== allowedOrigin) return;
-
-      if (event.data?.type === "AUTH_TOKEN" && event.data?.token) {
-        console.log("✅ Token reçu via postMessage");
-        setAuthToken(event.data.token);
-        setTokenReady(true);
+  const getSiteId = async (): Promise<string> => {
+    try {
+      // 1. Wix SDK
+      if (typeof window !== "undefined" && window.Wix) {
+        return await new Promise((resolve) => {
+          window.Wix.getSiteInfo((info: any) => {
+            resolve(info?.siteId || "demo-site");
+          });
+        });
       }
+
+      // 2. URL fallback
+      const params = new URLSearchParams(window.location.search);
+      const sid = params.get("siteId");
+
+      return sid || "demo-site";
+    } catch (e) {
+      console.warn("Erreur getSiteId:", e);
+      return "demo-site";
+    }
+  };
+  const getAuthToken = async (): Promise<string | null> => {
+    try {
+      const localToken = localStorage.getItem("token");
+      if (localToken) {
+        return localToken;
+      }
+      const sessionToken = sessionStorage.getItem("token");
+      if (sessionToken) {
+        return sessionToken;
+      }
+      if (typeof window !== "undefined" && window.wixEssentials) {
+        const token = await window.wixEssentials.auth.getMemberToken();
+        if (token) {
+          return token;
+        }
+      }
+      if (typeof window !== "undefined" && window.Wix) {
+        const token = await window.Wix.getAuthToken();
+        if (token) {
+          console.log("✅ Token récupéré via Wix SDK");
+          return token;
+        }
+      }
+      if (import.meta.env.DEV) {
+        console.warn(
+          "⚠️ Mode développement: utilisation d'un token temporaire",
+        );
+        return "dev-token-temp";
+      }
+
+      console.error("Impossible de récupérer le token d'authentification");
+      return null;
+    } catch (error) {
+      console.error("Erreur récupération token:", error);
+      return null;
+    }
+  };
+  useEffect(() => {
+    const init = async () => {
+      setIsInitializing(true);
+
+      const token = await getAuthToken();
+      if (token) setAuthToken(token);
+
+      const sid = await getSiteId();
+      setSiteId(sid);
+
+      console.log("📍 SiteId:", sid);
+
+      await loadCredentials(sid, token || "");
+
+      setIsInitializing(false);
     };
 
-    window.addEventListener("message", handleMessage);
-    window.parent.postMessage({ type: "IFRAME_READY" }, "*");
-
-    return () => window.removeEventListener("message", handleMessage);
+    init();
   }, []);
-
-  useEffect(() => {
-    if (!tokenReady || !authToken) return;
-
-    const initialize = async () => {
-      try {
-        const url = await dashboard.getPageUrl({ pageId: "home" });
-        const params = new URLSearchParams(new URL(url).search);
-        const sid = params.get("siteId") || "demo-site";
-        setSiteId(sid);
-        await loadCredentials(sid, authToken);
-      } catch (error) {
-        console.error("Erreur initialisation:", error);
-        const sid = "demo-site";
-        setSiteId(sid);
-        await loadCredentials(sid, authToken);
-      }
-    };
-
-    initialize();
-  }, [tokenReady, authToken]);
-
   async function loadCredentials(sid: string, token: string): Promise<void> {
     try {
       const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (token) headers["Authorization"] = `Bearer ${token}`;
+      if (token && token !== "dev-token-temp") {
+        headers["Authorization"] = `Bearer ${token}`;
+      }
 
       const response = await fetch(
         `${BACKEND}/api/merchant/get-credentials?wix_site_id=${sid}`,
@@ -187,6 +226,7 @@ const CredentialsPage = () => {
       newErrors.id_operator = "L'ID Operator est requis";
     if (!form.operator_password.trim() && !editing)
       newErrors.operator_password = "Le mot de passe est requis";
+
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
@@ -194,20 +234,49 @@ const CredentialsPage = () => {
   const saveCredentials = async () => {
     if (!validate()) return;
 
+    if (
+      !siteId ||
+      siteId === "" ||
+      siteId === "3d72081f-c317-4793-8908-49e61bfcae47"
+    ) {
+      toast.error("Site ID non trouvé. Veuillez recharger la page.");
+      return;
+    }
+
     setIsSaving(true);
+    console.log("📍 Sauvegarde avec siteId:", siteId);
 
     try {
       const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+
+      // Récupérer le token à nouveau avant d'envoyer
+      let token = authToken || null;
+      if (!token || token === "dev-token-temp") {
+        token = await getAuthToken();
+        if (token) setAuthToken(token);
+      }
+
+      if (token && token !== "dev-token-temp") {
+        headers["Authorization"] = `Bearer ${token}`;
+        console.log(
+          "Token envoyé (premiers 20 chars):",
+          token.substring(0, 20),
+        );
+      } else {
+        console.warn("⚠️ Pas de token d'authentification disponible");
+      }
 
       const response = await fetch(`${BACKEND}/api/merchant/save-credentials`, {
         method: "POST",
         headers,
-        body: JSON.stringify({ wix_site_id: siteId, ...form }),
+        body: JSON.stringify({
+          wix_site_id: "3d72081f-c317-4793-8908-49e61bfcae47",
+          ...form,
+        }),
       });
 
       if (response.status === 401) {
-        toast.error("Veuillez vous reconnecter");
+        toast.error("Session expirée. Veuillez vous reconnecter.");
         return;
       }
 
@@ -236,6 +305,14 @@ const CredentialsPage = () => {
       setIsSaving(false);
     }
   };
+
+  if (isInitializing) {
+    return (
+      <div className="w-full flex items-center justify-center min-h-[400px]">
+        <Loader2 className="w-8 h-8 text-primary animate-spin" />
+      </div>
+    );
+  }
 
   return (
     <div className="w-full flex items-center justify-center relative">

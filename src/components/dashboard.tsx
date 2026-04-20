@@ -11,7 +11,6 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 
 type Payment = {
   id: string;
@@ -75,7 +74,7 @@ export default function Dashboard() {
   //   );
 
   return (
-    <div className="container p-6 space-y-6 mx-auto">
+    <div className="container p-6 space-y-6 mx-auto h-screen">
       <div className="flex justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Mes paiements</h1>

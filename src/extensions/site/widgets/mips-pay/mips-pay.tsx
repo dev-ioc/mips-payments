@@ -1,4 +1,4 @@
-const BACKEND = "https://f2c8-102-18-5-114.ngrok-free.app";
+const BACKEND = "http://localhost:3000";
 
 // Déclaration des types pour l'API Wix
 declare global {
@@ -173,9 +173,9 @@ class MipsPay extends HTMLElement {
     this.dynamicAmount = amount > 0 ? amount : 200; // Force 200 si 0
     this.cartItems = items;
 
-    console.log(
-      `Montant mis à jour: ${this.dynamicAmount} ${this.currency} (source: ${this.amountSource})`,
-    );
+    // console.log(
+    //   `Montant mis à jour: ${this.dynamicAmount} ${this.currency} (source: ${this.amountSource})`,
+    // );
 
     this.render();
     this.attachEvents();
