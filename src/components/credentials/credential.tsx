@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { dashboard } from "@wix/dashboard";
+// import { dashboard } from "@wix/dashboard";
 import { Loader2, Key, CheckCircle } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
@@ -12,21 +12,21 @@ declare global {
 }
 
 const BACKEND = import.meta.env.PROD
-  ? "https://ton-backend-prod.com"
+  ? "https://0464-102-18-5-16.ngrok-free.app"
   : "http://localhost:3000";
 
-type Credentials = {
-  id: string;
-  id_merchant: string;
-  id_entity: string;
-  id_operator: string;
-  operator_password: string;
-  currency: string;
-  request_mode: string;
-  sending_mode: string;
-  wix_site_id: string;
-  is_active: boolean;
-};
+// type Credentials = {
+//   id: string;
+//   id_merchant: string;
+//   id_entity: string;
+//   id_operator: string;
+//   operator_password: string;
+//   currency: string;
+//   request_mode: string;
+//   sending_mode: string;
+//   wix_site_id: string;
+//   is_active: boolean;
+// };
 
 const requestModeLabels: Record<string, string> = {
   simple: "Simple (paiement unique)",
@@ -48,7 +48,6 @@ const requestSendingLables: Record<string, string> = {
   link: "Lien (le client reçoit un lien)",
   mail: "Email (MiPS envoie l'email)",
   sms: "SMS (MiPS envoie un SMS)",
-  noaction: "Aucune action (lien uniquement)",
 };
 
 interface FormFieldProps {
@@ -96,28 +95,82 @@ const CredentialsPage = () => {
   );
   const [authToken, setAuthToken] = useState<string>("");
   const [isInitializing, setIsInitializing] = useState(true);
-
-  const getSiteId = async (): Promise<string> => {
+  function getSiteIdFromInstance(): string {
     try {
-      // 1. Wix SDK
-      if (typeof window !== "undefined" && window.Wix) {
-        return await new Promise((resolve) => {
-          window.Wix.getSiteInfo((info: any) => {
-            resolve(info?.siteId || "demo-site");
-          });
-        });
-      }
-
-      // 2. URL fallback
       const params = new URLSearchParams(window.location.search);
-      const sid = params.get("siteId");
+      const instance = params.get("instance");
+      if (!instance) return "";
 
-      return sid || "demo-site";
+      // Le token Wix est un JWT non signé côté client : header.payload.signature
+      const parts = instance.split(".");
+      if (parts.length < 2) return "";
+
+      // Décoder le payload base64
+      const payload = JSON.parse(
+        atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
+      );
+      console.log("📦 Instance payload:", payload);
+
+      return (
+        payload.metaSiteId || payload.siteOwnerId || payload.instanceId || ""
+      );
     } catch (e) {
-      console.warn("Erreur getSiteId:", e);
-      return "demo-site";
+      console.warn("Décodage instance échoué:", e);
+      return "";
     }
-  };
+  }
+  // ── Récupérer le site ID ──
+  function getSiteId(): string {
+    // Méthode 1 — instance JWT dans l'URL (le plus fiable dans le dashboard Wix)
+    const fromInstance = getSiteIdFromInstance();
+    if (fromInstance) {
+      console.log("✅ Site ID via instance JWT:", fromInstance);
+      return fromInstance;
+    }
+
+    // Méthode 2 — Path /dashboard/{siteId}/...
+    const pathMatch = window.location.pathname.match(
+      /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
+    );
+    if (pathMatch) {
+      console.log("✅ Site ID via pathname:", pathMatch[1]);
+      return pathMatch[1];
+    }
+
+    // Méthode 3 — Query params
+    const params = new URLSearchParams(window.location.search);
+    const id =
+      params.get("tenantId") ||
+      params.get("metaSiteId") ||
+      params.get("siteId");
+    if (id) {
+      console.log("✅ Site ID via query param:", id);
+      return id;
+    }
+
+    // Méthode 4 — Referrer
+    if (document.referrer) {
+      try {
+        const refUrl = new URL(document.referrer);
+        const refPathMatch = refUrl.pathname.match(
+          /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
+        );
+        if (refPathMatch) {
+          console.log("✅ Site ID via referrer path:", refPathMatch[1]);
+          return refPathMatch[1];
+        }
+        const refParams = new URLSearchParams(refUrl.search);
+        const refId = refParams.get("tenantId") || refParams.get("metaSiteId");
+        if (refId) {
+          console.log("✅ Site ID via referrer params:", refId);
+          return refId;
+        }
+      } catch (e) {}
+    }
+
+    console.error("❌ Site ID introuvable");
+    return "";
+  }
   const getAuthToken = async (): Promise<string | null> => {
     try {
       const localToken = localStorage.getItem("token");
@@ -158,47 +211,55 @@ const CredentialsPage = () => {
   useEffect(() => {
     const init = async () => {
       setIsInitializing(true);
+      try {
+        const [token, sid] = await Promise.all([getAuthToken(), getSiteId()]);
 
-      const token = await getAuthToken();
-      if (token) setAuthToken(token);
+        if (token) {
+          setAuthToken(token);
+          localStorage.setItem("token", token);
+        }
+        if (sid) setSiteId(sid);
 
-      const sid = await getSiteId();
-      setSiteId(sid);
+        console.log("📍 SiteId:", sid);
+        console.log("🔑 Token:", token ? token.slice(0, 20) + "..." : "aucun");
 
-      console.log("📍 SiteId:", sid);
-
-      await loadCredentials(sid, token || "");
-
-      setIsInitializing(false);
+        if (token) await loadCredentials(token);
+      } catch (e) {
+        console.error("Init error:", e);
+      } finally {
+        setIsInitializing(false);
+      }
     };
-
     init();
   }, []);
-  async function loadCredentials(sid: string, token: string): Promise<void> {
+  // ── Charger les credentials par user_id (via token) ──
+  async function loadCredentials(token: string): Promise<void> {
     try {
-      const headers: HeadersInit = { "Content-Type": "application/json" };
-      if (token && token !== "dev-token-temp") {
-        headers["Authorization"] = `Bearer ${token}`;
+      const response = await fetch(`${BACKEND}/api/merchant/get-credentials`, {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      if (response.status === 401) {
+        console.warn("Token invalide ou expiré");
+        localStorage.removeItem("token");
+        return;
       }
 
-      const response = await fetch(
-        `${BACKEND}/api/merchant/get-credentials?wix_site_id=${sid}`,
-        { method: "GET", headers },
-      );
-
-      if (!response.ok) {
-        if (response.status === 401) return;
-        throw new Error(`HTTP ${response.status}`);
-      }
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
+      console.log("📦 Credentials chargés:", data);
 
       if (data.configured && data.merchant) {
         setForm({
           id_merchant: data.merchant.id_merchant || "",
           id_entity: data.merchant.id_entity || "",
           id_operator: data.merchant.id_operator || "",
-          operator_password: "",
+          operator_password: data.merchant.operator_password || "",
           currency: data.merchant.currency || "MUR",
           request_mode: data.merchant.request_mode || "simple",
           sending_mode: data.merchant.sending_mode || "link",
@@ -233,16 +294,6 @@ const CredentialsPage = () => {
 
   const saveCredentials = async () => {
     if (!validate()) return;
-
-    if (
-      !siteId ||
-      siteId === "" ||
-      siteId === "3d72081f-c317-4793-8908-49e61bfcae47"
-    ) {
-      toast.error("Site ID non trouvé. Veuillez recharger la page.");
-      return;
-    }
-
     setIsSaving(true);
     console.log("📍 Sauvegarde avec siteId:", siteId);
 
@@ -265,7 +316,7 @@ const CredentialsPage = () => {
       } else {
         console.warn("⚠️ Pas de token d'authentification disponible");
       }
-
+      console.log("📍 Sauvegarde avec siteId:", siteId);
       const response = await fetch(`${BACKEND}/api/merchant/save-credentials`, {
         method: "POST",
         headers,
@@ -292,7 +343,7 @@ const CredentialsPage = () => {
           editing ? "Credentials mis à jour !" : "Credentials sauvegardés !",
         );
         setEditing(true);
-        setForm((prev) => ({ ...prev, operator_password: "" }));
+        setForm((prev) => ({ ...prev }));
       } else {
         toast.error(data.error || "Erreur lors de la sauvegarde");
       }

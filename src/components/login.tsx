@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "./ui/button";
 
 // Utilisez la même URL que votre backend MiPS
-const BACKEND = "http://localhost:3000";
+const BACKEND = "https://0464-102-18-5-16.ngrok-free.app";
 
 const schema = z.object({
   email: z.string().email("Email invalide"),
@@ -95,7 +95,7 @@ const Login = () => {
         <div className="relative">
           <div className="w-300 h-200 flex items-center justify-left">
             <img
-              src="mips-logo.png"
+              src="assets/mips-logo.png"
               alt="MIPS Payment"
               className="w-400 h-500 object-contain"
             />
