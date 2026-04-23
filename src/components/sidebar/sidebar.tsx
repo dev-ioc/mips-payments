@@ -4,7 +4,7 @@ import { CreditCard, Key, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const BACKEND = import.meta.env.PROD
-  ? "https://ton-backend-prod.com"
+  ? "http://localhost:3000"
   : "http://localhost:3000";
 
 const menu = [
@@ -74,7 +74,7 @@ function SidebarContent() {
     <div className="flex flex-col h-full">
       <div className="p-4 flex flex-col items-center justify-center gap-2 border-b text-center">
         <img
-          src="/assets/mips-logo.png"
+          src="assets/mips-logo.png"
           alt="MIPS Payment"
           className="w-24 h-24 rounded-lg object-contain"
           onError={(e) => {

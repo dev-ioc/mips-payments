@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "./ui/button";
 
 // Utilisez la même URL que votre backend MiPS
-const BACKEND = "https://0464-102-18-5-16.ngrok-free.app";
+const BACKEND = "http://localhost:3000";
 
 const schema = z.object({
   email: z.string().email("Email invalide"),

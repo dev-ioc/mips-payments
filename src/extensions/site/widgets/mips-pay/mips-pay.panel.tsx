@@ -1,3 +1,4 @@
+// panel.tsx - Version avec sauvegarde automatique après vérification
 import React, { type FC, useState, useEffect, useCallback } from "react";
 import { widget } from "@wix/editor";
 import {
@@ -11,8 +12,13 @@ import {
   Text,
   Divider,
   SectionHelper,
+  Button,
+  Loader,
+  TextButton,
 } from "@wix/design-system";
 import "@wix/design-system/styles.global.css";
+
+const BACKEND = "http://localhost:3000";
 
 interface MipsConfig {
   "button-text": string;
@@ -20,13 +26,32 @@ interface MipsConfig {
   amount: string;
   currency: string;
   "payment-title": string;
-  "site-id": string;
+  "public-key": string;
+  "sending-mode": string;
+  "request-mode": string;
+  "public-key-input": string;
 }
 
 const CURRENCY_OPTIONS = [
   { id: "MUR", value: "MUR — Roupie mauricienne" },
   { id: "USD", value: "USD — Dollar américain" },
   { id: "EUR", value: "EUR — Euro" },
+  { id: "GBP", value: "GBP — Livre sterling" },
+  { id: "ZAR", value: "ZAR — Rand sud-africain" },
+];
+
+const SENDING_MODE_OPTIONS = [
+  { id: "link", value: "Lien (le client reçoit un lien)" },
+  { id: "mail", value: "Email (MiPS envoie l'email)" },
+  { id: "sms", value: "SMS (MiPS envoie un SMS)" },
+];
+
+const REQUEST_MODE_OPTIONS = [
+  { id: "simple", value: "Simple (paiement unique)" },
+  { id: "deposit", value: "Dépôt" },
+  { id: "odrp", value: "ODRP" },
+  { id: "membership", value: "Abonnement" },
+  { id: "bill_presentment", value: "Présentation de facture" },
 ];
 
 const Panel: FC = () => {
@@ -36,8 +61,18 @@ const Panel: FC = () => {
     amount: "",
     currency: "MUR",
     "payment-title": "Paiement",
-    "site-id": "",
+    "public-key": "",
+    "public-key-input": "",
+    "sending-mode": "link",
+    "request-mode": "simple",
   });
+
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<"idle" | "success" | "error">(
+    "idle",
+  );
+  const [saveMessage, setSaveMessage] = useState("");
+  const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
     const keys: (keyof MipsConfig)[] = [
@@ -46,7 +81,9 @@ const Panel: FC = () => {
       "amount",
       "currency",
       "payment-title",
-      "site-id",
+      "public-key",
+      "sending-mode",
+      "request-mode",
     ];
 
     Promise.all(keys.map((k) => widget.getProp(k).then((v) => ({ k, v }))))
@@ -55,10 +92,92 @@ const Panel: FC = () => {
         results.forEach(({ k, v }) => {
           if (v) loaded[k] = v;
         });
+
         setConfig((prev) => ({ ...prev, ...loaded }));
+
+        if (loaded["public-key"]) {
+          verifyPublicKey(loaded["public-key"]);
+        }
       })
       .catch(console.error);
   }, []);
+
+  // Fonction pour sauvegarder la clé à plusieurs endroits
+  const savePublicKey = useCallback((publicKey: string) => {
+    console.log("💾 Sauvegarde automatique de la clé:", publicKey);
+
+    // 1. Sauvegarder via widget API
+    widget.setProp("public-key", publicKey);
+
+    // 2. Sauvegarder dans localStorage
+    localStorage.setItem("mips_public_key", publicKey);
+
+    // 3. Sauvegarder comme variable globale
+    if (typeof window !== "undefined") {
+      (window as any).MIPS_PUBLIC_KEY = publicKey;
+    }
+
+    // 4. Sauvegarder comme attribut direct sur l'élément widget
+    setTimeout(() => {
+      const widgetElement = document.querySelector("mips-pay");
+      if (widgetElement) {
+        widgetElement.setAttribute("public-key", publicKey);
+        console.log("✅ Clé ajoutée comme attribut sur l'élément widget");
+      }
+    }, 100);
+
+    // Mettre à jour l'état
+    setConfig((prev) => ({ ...prev, "public-key": publicKey }));
+  }, []);
+
+  const verifyPublicKey = async (publicKey: string) => {
+    if (!publicKey) return;
+
+    setVerifying(true);
+    try {
+      const res = await fetch(
+        `${BACKEND}/api/merchant/verify-public-key?public_key=${publicKey}`,
+      );
+      const data = await res.json();
+
+      if (data.valid) {
+        // ✅ Clé valide - Sauvegarde automatique
+        savePublicKey(publicKey);
+
+        setSaveStatus("success");
+        setSaveMessage(
+          "✅ Clé publique valide ! Configuration chargée et sauvegardée.",
+        );
+
+        // Mettre à jour la configuration avec les données du merchant
+        if (data.merchant.currency) {
+          updateProp("currency", data.merchant.currency);
+        }
+        if (data.merchant.sending_mode) {
+          updateProp("sending-mode", data.merchant.sending_mode);
+        }
+        if (data.merchant.request_mode) {
+          updateProp("request-mode", data.merchant.request_mode);
+        }
+      } else {
+        setSaveStatus("error");
+        setSaveMessage(
+          "❌ Clé publique invalide. Veuillez vérifier votre clé.",
+        );
+      }
+    } catch (err) {
+      setSaveStatus("error");
+      setSaveMessage("❌ Impossible de vérifier la clé publique.");
+    } finally {
+      setVerifying(false);
+      setTimeout(() => {
+        if (saveStatus !== "success") {
+          setSaveStatus("idle");
+          setSaveMessage("");
+        }
+      }, 4000);
+    }
+  };
 
   const updateProp = useCallback(
     <K extends keyof MipsConfig>(key: K, value: string) => {
@@ -68,13 +187,110 @@ const Panel: FC = () => {
     [],
   );
 
+  const handleVerifyKey = () => {
+    if (config["public-key-input"]) {
+      verifyPublicKey(config["public-key-input"]);
+    }
+  };
+
+  const handleSaveAllConfig = async () => {
+    setSaving(true);
+    setSaveStatus("idle");
+    setSaveMessage("");
+
+    try {
+      const res = await fetch(`${BACKEND}/api/merchant/save-config`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          public_key: config["public-key"] || config["public-key-input"],
+          currency: config["currency"],
+          sending_mode: config["sending-mode"],
+          request_mode: config["request-mode"],
+          button_text: config["button-text"],
+          button_color: config["button-color"],
+          payment_title: config["payment-title"],
+          amount: config["amount"],
+        }),
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        setSaveStatus("success");
+        setSaveMessage("✅ Configuration enregistrée !");
+      } else {
+        setSaveStatus("error");
+        setSaveMessage(data.error || "❌ Erreur lors de l'enregistrement.");
+      }
+    } catch (err) {
+      setSaveStatus("error");
+      setSaveMessage("❌ Impossible de joindre le serveur.");
+    } finally {
+      setSaving(false);
+      setTimeout(() => {
+        setSaveStatus("idle");
+        setSaveMessage("");
+      }, 4000);
+    }
+  };
+
   return (
     <WixDesignSystemProvider>
       <SidePanel width="300" height="100vh">
         <SidePanel.Content noPadding stretchVertically>
+          {/* ── Configuration de la clé publique ── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              Apparence
+              🔑 Configuration MiPS
+            </Text>
+          </SidePanel.Field>
+
+          <SidePanel.Field>
+            <FormField
+              label="Clé publique MiPS"
+              infoContent="Entrez votre clé publique - elle sera automatiquement sauvegardée si valide"
+            >
+              <div
+                style={{ display: "flex", gap: "8px", alignItems: "center" }}
+              >
+                <div style={{ flex: 1 }}>
+                  <Input
+                    value={config["public-key-input"]}
+                    onChange={(e) => {
+                      setConfig((prev) => ({
+                        ...prev,
+                        "public-key-input": e.target.value,
+                      }));
+                    }}
+                    placeholder="pk_live_xxxxxxxxxxxxxxxxxxxxxxxx"
+                  />
+                </div>
+                <Button
+                  onClick={handleVerifyKey}
+                  disabled={verifying || !config["public-key-input"]}
+                  size="small"
+                >
+                  {verifying ? <Loader size="tiny" /> : "Vérifier"}
+                </Button>
+              </div>
+            </FormField>
+          </SidePanel.Field>
+
+          {config["public-key"] && (
+            <SidePanel.Field>
+              <SectionHelper fullWidth appearance="success">
+                🔑 Clé active : {config["public-key"].substring(0, 25)}...
+              </SectionHelper>
+            </SidePanel.Field>
+          )}
+
+          <Divider />
+
+          {/* ── Apparence ── */}
+          <SidePanel.Field>
+            <Text weight="bold" size="small">
+              🎨 Apparence
             </Text>
           </SidePanel.Field>
 
@@ -103,7 +319,7 @@ const Panel: FC = () => {
 
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              Paiement
+              💰 Paiement
             </Text>
           </SidePanel.Field>
 
@@ -125,7 +341,7 @@ const Panel: FC = () => {
                 placeholder="ex: 150.00"
                 suffix={
                   <Text size="small" secondary>
-                    MUR
+                    {config["currency"]}
                   </Text>
                 }
               />
@@ -143,31 +359,83 @@ const Panel: FC = () => {
           </SidePanel.Field>
 
           <Divider />
-
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              Configuration
+              📤 Mode MiPS
             </Text>
           </SidePanel.Field>
 
           <SidePanel.Field>
             <FormField
-              label="Wix Site ID"
-              infoContent="Trouvez votre Site ID dans les paramètres de votre site Wix"
+              label="Mode d'envoi"
+              infoContent="Comment MiPS envoie le lien de paiement au client"
             >
-              <Input
-                value={config["site-id"]}
-                onChange={(e) => updateProp("site-id", e.target.value)}
-                placeholder="ex: abc123-def456..."
+              <Dropdown
+                selectedId={config["sending-mode"]}
+                options={SENDING_MODE_OPTIONS}
+                onSelect={(opt) => updateProp("sending-mode", opt.id as string)}
               />
             </FormField>
           </SidePanel.Field>
+
+          <SidePanel.Field>
+            <FormField
+              label="Mode de paiement"
+              infoContent="Type de paiement MiPS à utiliser"
+            >
+              <Dropdown
+                selectedId={config["request-mode"]}
+                options={REQUEST_MODE_OPTIONS}
+                onSelect={(opt) => updateProp("request-mode", opt.id as string)}
+              />
+            </FormField>
+          </SidePanel.Field>
+
+          <Divider />
+          <SidePanel.Field>
+            <TextButton
+              size="small"
+              as="a"
+              href="https://dashboard.mipspay.mu"
+              target="_blank"
+            >
+              Configurer mes credentials MiPS →
+            </TextButton>
+          </SidePanel.Field>
+
+          {/* <SidePanel.Field>
+            {saving ? (
+              <Loader size="small" />
+            ) : (
+              <Button fullWidth onClick={handleSaveAllConfig}>
+                Enregistrer toute la configuration
+              </Button>
+            )}
+          </SidePanel.Field> */}
+
+          {saveStatus === "success" && (
+            <SidePanel.Field>
+              <SectionHelper fullWidth appearance="success">
+                {saveMessage}
+              </SectionHelper>
+            </SidePanel.Field>
+          )}
+          {saveStatus === "error" && (
+            <SidePanel.Field>
+              <SectionHelper fullWidth appearance="danger">
+                {saveMessage}
+              </SectionHelper>
+            </SidePanel.Field>
+          )}
         </SidePanel.Content>
 
         <SidePanel.Footer noPadding>
-          <SectionHelper fullWidth appearance="success" border="topBottom">
-            Configurez vos credentials MiPS dans le{" "}
-            <strong>Dashboard de l'app</strong>
+          <SectionHelper fullWidth appearance="warning" border="topBottom">
+            🔒 Vos credentials MiPS sont stockés de façon sécurisée dans la base
+            de données.
+            <br />
+            📌 La clé publique est automatiquement sauvegardée après
+            vérification.
           </SectionHelper>
         </SidePanel.Footer>
       </SidePanel>

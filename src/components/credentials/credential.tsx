@@ -1,6 +1,14 @@
 import React, { useState, useEffect } from "react";
 // import { dashboard } from "@wix/dashboard";
-import { Loader2, Key, CheckCircle } from "lucide-react";
+import {
+  Loader2,
+  Key,
+  CheckCircle,
+  Copy,
+  Eye,
+  EyeOff,
+  ExternalLink,
+} from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
 declare global {
@@ -12,21 +20,8 @@ declare global {
 }
 
 const BACKEND = import.meta.env.PROD
-  ? "https://0464-102-18-5-16.ngrok-free.app"
+  ? "https://5397-102-18-5-17.ngrok-free.app"
   : "http://localhost:3000";
-
-// type Credentials = {
-//   id: string;
-//   id_merchant: string;
-//   id_entity: string;
-//   id_operator: string;
-//   operator_password: string;
-//   currency: string;
-//   request_mode: string;
-//   sending_mode: string;
-//   wix_site_id: string;
-//   is_active: boolean;
-// };
 
 const requestModeLabels: Record<string, string> = {
   simple: "Simple (paiement unique)",
@@ -95,17 +90,19 @@ const CredentialsPage = () => {
   );
   const [authToken, setAuthToken] = useState<string>("");
   const [isInitializing, setIsInitializing] = useState(true);
+  const [generatedPublicKey, setGeneratedPublicKey] = useState<string>("");
+  const [showPublicKey, setShowPublicKey] = useState(false);
+  const [existingPublicKey, setExistingPublicKey] = useState<string>("");
+
   function getSiteIdFromInstance(): string {
     try {
       const params = new URLSearchParams(window.location.search);
       const instance = params.get("instance");
       if (!instance) return "";
 
-      // Le token Wix est un JWT non signé côté client : header.payload.signature
       const parts = instance.split(".");
       if (parts.length < 2) return "";
 
-      // Décoder le payload base64
       const payload = JSON.parse(
         atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
       );
@@ -119,16 +116,14 @@ const CredentialsPage = () => {
       return "";
     }
   }
-  // ── Récupérer le site ID ──
+
   function getSiteId(): string {
-    // Méthode 1 — instance JWT dans l'URL (le plus fiable dans le dashboard Wix)
     const fromInstance = getSiteIdFromInstance();
     if (fromInstance) {
       console.log("✅ Site ID via instance JWT:", fromInstance);
       return fromInstance;
     }
 
-    // Méthode 2 — Path /dashboard/{siteId}/...
     const pathMatch = window.location.pathname.match(
       /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
     );
@@ -137,7 +132,6 @@ const CredentialsPage = () => {
       return pathMatch[1];
     }
 
-    // Méthode 3 — Query params
     const params = new URLSearchParams(window.location.search);
     const id =
       params.get("tenantId") ||
@@ -148,7 +142,6 @@ const CredentialsPage = () => {
       return id;
     }
 
-    // Méthode 4 — Referrer
     if (document.referrer) {
       try {
         const refUrl = new URL(document.referrer);
@@ -171,6 +164,7 @@ const CredentialsPage = () => {
     console.error("❌ Site ID introuvable");
     return "";
   }
+
   const getAuthToken = async (): Promise<string | null> => {
     try {
       const localToken = localStorage.getItem("token");
@@ -208,6 +202,7 @@ const CredentialsPage = () => {
       return null;
     }
   };
+
   useEffect(() => {
     const init = async () => {
       setIsInitializing(true);
@@ -232,7 +227,7 @@ const CredentialsPage = () => {
     };
     init();
   }, []);
-  // ── Charger les credentials par user_id (via token) ──
+
   async function loadCredentials(token: string): Promise<void> {
     try {
       const response = await fetch(`${BACKEND}/api/merchant/get-credentials`, {
@@ -265,6 +260,12 @@ const CredentialsPage = () => {
           sending_mode: data.merchant.sending_mode || "link",
         });
         setEditing(true);
+
+        // Charger la clé publique existante
+        if (data.merchant.public_key) {
+          setExistingPublicKey(data.merchant.public_key);
+          setGeneratedPublicKey(data.merchant.public_key);
+        }
       }
     } catch (e) {
       console.error("Erreur chargement credentials:", e);
@@ -300,7 +301,6 @@ const CredentialsPage = () => {
     try {
       const headers: HeadersInit = { "Content-Type": "application/json" };
 
-      // Récupérer le token à nouveau avant d'envoyer
       let token = authToken || null;
       if (!token || token === "dev-token-temp") {
         token = await getAuthToken();
@@ -316,12 +316,12 @@ const CredentialsPage = () => {
       } else {
         console.warn("⚠️ Pas de token d'authentification disponible");
       }
-      console.log("📍 Sauvegarde avec siteId:", siteId);
+
       const response = await fetch(`${BACKEND}/api/merchant/save-credentials`, {
         method: "POST",
         headers,
         body: JSON.stringify({
-          wix_site_id: "3d72081f-c317-4793-8908-49e61bfcae47",
+          wix_site_id: siteId,
           ...form,
         }),
       });
@@ -339,11 +339,20 @@ const CredentialsPage = () => {
       const data = await response.json();
 
       if (data.success) {
-        toast.success(
-          editing ? "Credentials mis à jour !" : "Credentials sauvegardés !",
-        );
+        // Afficher la clé publique si elle est retournée
+        if (data.public_key) {
+          setGeneratedPublicKey(data.public_key);
+          setExistingPublicKey(data.public_key);
+          toast.success(
+            `✅ Credentials sauvegardés ! Votre clé publique a été générée.`,
+            { duration: 5000 },
+          );
+        } else {
+          toast.success(
+            editing ? "Credentials mis à jour !" : "Credentials sauvegardés !",
+          );
+        }
         setEditing(true);
-        setForm((prev) => ({ ...prev }));
       } else {
         toast.error(data.error || "Erreur lors de la sauvegarde");
       }
@@ -355,6 +364,11 @@ const CredentialsPage = () => {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const copyToClipboard = (text: string) => {
+    navigator.clipboard.writeText(text);
+    toast.success("Clé publique copiée !");
   };
 
   if (isInitializing) {
@@ -377,13 +391,76 @@ const CredentialsPage = () => {
         <div className="md:flex items-center justify-between mb-7 gap-4">
           <div className="py-4">
             <h1 className="text-[22px] font-bold tracking-tight text-gray-900 text-primary">
-              Credentials MIPS
+              Configuration MiPS
             </h1>
             <p className="text-[13px] text-gray-500 mt-1">
-              Gérez vos identifiants de connexion.
+              Configurez vos identifiants MiPS et récupérez votre clé publique
             </p>
           </div>
         </div>
+
+        {/* Section Clé Publique */}
+        {(generatedPublicKey || existingPublicKey) && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Key size={20} className="text-blue-600" />
+              <h2 className="text-[16px] font-bold text-gray-900">
+                Clé publique générée
+              </h2>
+            </div>
+            <p className="text-[12px] text-gray-600 mb-3">
+              Copiez cette clé et collez-la dans le widget MiPS sur votre site
+              Wix pour activer les paiements.
+            </p>
+            <div className="bg-white rounded-xl p-3 border border-blue-100">
+              <div className="flex items-center justify-between gap-2">
+                <code className="text-[13px] font-mono break-all text-gray-800">
+                  {showPublicKey
+                    ? generatedPublicKey || existingPublicKey
+                    : "••••••••••••••••••••••••••••••••••••••••"}
+                </code>
+                <div className="flex gap-1 flex-shrink-0">
+                  <button
+                    onClick={() => setShowPublicKey(!showPublicKey)}
+                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                    title={showPublicKey ? "Masquer" : "Afficher"}
+                  >
+                    {showPublicKey ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                  <button
+                    onClick={() =>
+                      copyToClipboard(generatedPublicKey || existingPublicKey)
+                    }
+                    className="p-1.5 hover:bg-gray-100 rounded-lg transition-colors"
+                    title="Copier"
+                  >
+                    <Copy size={16} />
+                  </button>
+                </div>
+              </div>
+            </div>
+            {/* <div className="mt-4 flex gap-3"> */}
+            {/* <button
+                onClick={() =>
+                  copyToClipboard(generatedPublicKey || existingPublicKey)
+                }
+                className="px-4 py-2 text-[13px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+              >
+                <Copy size={14} />
+                Copier la clé
+              </button> */}
+            {/* <button
+                onClick={() => {
+                  window.open("https://editor.wix.com", "_blank");
+                }}
+                className="px-4 py-2 text-[13px] font-semibold border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
+              >
+                <ExternalLink size={14} />
+                Ajouter le widget
+              </button> */}
+            {/* </div> */}
+          </div>
+        )}
 
         <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 mb-4">
           <div className="flex items-center justify-between mb-4">
@@ -393,10 +470,10 @@ const CredentialsPage = () => {
               </div>
               <div>
                 <div className="text-[14px] font-bold text-gray-900">
-                  Mes identifiants MIPS
+                  Identifiants MiPS
                 </div>
                 <div className="text-[12px] text-gray-500">
-                  Fournis par MIPS lors de la création de votre compte
+                  Fournis par MiPS lors de la création de votre compte
                 </div>
               </div>
             </div>
@@ -404,7 +481,7 @@ const CredentialsPage = () => {
 
           {form.id_merchant && editing && (
             <div className="flex items-center gap-2 bg-teal-50 border border-teal-100 rounded-xl px-4 py-3 text-[13px] text-teal-700 mb-5">
-              <CheckCircle size={16} /> Credentials valides — API MIPS
+              <CheckCircle size={16} /> Credentials configurés — API MiPS
               accessible
             </div>
           )}
@@ -498,12 +575,37 @@ const CredentialsPage = () => {
               <button
                 type="submit"
                 disabled={isSaving}
-                className="px-4 py-2 rounded-full text-[13px] font-semibold border border-gray-200 bg-primary text-white hover:border-gray-400 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+                className="px-4 py-2 rounded-full text-[13px] font-semibold bg-primary text-white hover:opacity-90 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSaving ? "Enregistrement..." : "Enregistrer les credentials"}
               </button>
             </div>
           </form>
+        </div>
+
+        {/* Instructions */}
+        <div className="bg-gray-50 rounded-2xl border border-gray-200 p-6">
+          <h3 className="text-[14px] font-semibold text-gray-900 mb-3">
+            📖 Comment utiliser votre clé publique ?
+          </h3>
+          <ol className="space-y-2 text-[13px] text-gray-600">
+            <li className="flex gap-2">
+              <span className="font-bold text-blue-600">1.</span>
+              Copiez la clé publique ci-dessus
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold text-blue-600">2.</span>
+              Allez dans l'éditeur Wix et ajoutez le widget MiPS
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold text-blue-600">3.</span>
+              Collez la clé publique dans le champ correspondant
+            </li>
+            <li className="flex gap-2">
+              <span className="font-bold text-blue-600">4.</span>
+              Configurez l'apparence du bouton et sauvegardez
+            </li>
+          </ol>
         </div>
       </div>
     </div>
