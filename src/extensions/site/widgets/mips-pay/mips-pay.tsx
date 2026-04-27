@@ -1,5 +1,5 @@
 // mips-pay.tsx - Version corrigée sans localStorage
-const BACKEND = "https://b6d3-102-18-5-17.ngrok-free.app";
+const BACKEND = "http://localhost:3000";
 
 declare global {
   interface Window {
@@ -461,7 +461,6 @@ class MipsPay extends HTMLElement {
 // Enregistrer le Web Component
 if (!customElements.get("mips-pay")) {
   customElements.define("mips-pay", MipsPay);
-  console.log("✅ Web Component mips-pay enregistré");
 }
 
 export default MipsPay;

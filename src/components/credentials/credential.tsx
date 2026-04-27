@@ -20,7 +20,7 @@ declare global {
 }
 
 const BACKEND = import.meta.env.PROD
-  ? "https://5397-102-18-5-17.ngrok-free.app"
+  ? "https://4425-102-18-5-190.ngrok-free.app"
   : "http://localhost:3000";
 
 const requestModeLabels: Record<string, string> = {

@@ -4,7 +4,7 @@ import { CreditCard, Key, Menu } from "lucide-react";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 
 const BACKEND = import.meta.env.PROD
-  ? "http://localhost:3000"
+  ? "https://8f3a-102-18-5-190.ngrok-free.app"
   : "http://localhost:3000";
 
 const menu = [
