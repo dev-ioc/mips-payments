@@ -9,7 +9,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "./ui/button";
 
 // Utilisez la même URL que votre backend MiPS
-const BACKEND = "http://localhost:3000";
+const BACKEND = "https://mips-wix-backend.onrender.com";
 
 const schema = z.object({
   email: z.string().email("Email invalide"),

@@ -1,5 +1,5 @@
 // mips-pay.tsx - Version corrigée sans localStorage
-const BACKEND = "http://localhost:3000";
+const BACKEND = "https://mips-wix-backend.onrender.com";
 
 declare global {
   interface Window {

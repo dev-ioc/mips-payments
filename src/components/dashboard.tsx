@@ -34,8 +34,8 @@ export default function Dashboard() {
     try {
       const url =
         status === "all"
-          ? "https://4425-102-18-5-190.ngrok-free.app/api/payments"
-          : `https://4425-102-18-5-190.ngrok-free.app/api/payments/${status}`;
+          ? "https://mips-wix-backend.onrender.com/api/payments"
+          : `https://mips-wix-backend.onrender.com/api/payments/${status}`;
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });

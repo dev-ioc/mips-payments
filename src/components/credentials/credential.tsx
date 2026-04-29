@@ -20,8 +20,8 @@ declare global {
 }
 
 const BACKEND = import.meta.env.PROD
-  ? "https://4425-102-18-5-190.ngrok-free.app"
-  : "http://localhost:3000";
+  ? "https://mips-wix-backend.onrender.com"
+  : "https://mips-wix-backend.onrender.com";
 
 const requestModeLabels: Record<string, string> = {
   simple: "Simple (paiement unique)",

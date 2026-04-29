@@ -18,7 +18,7 @@ import {
 } from "@wix/design-system";
 import "@wix/design-system/styles.global.css";
 
-const BACKEND = "http://localhost:3000";
+const BACKEND = "https://mips-wix-backend.onrender.com";
 
 interface MipsConfig {
   "button-text": string;

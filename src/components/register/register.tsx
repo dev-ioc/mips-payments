@@ -9,6 +9,7 @@ import toast, { Toaster } from "react-hot-toast";
 import { useState } from "react";
 import { Loader2 } from "lucide-react";
 
+const BACKEND = "https://mips-wix-backend.onrender.com";
 const schema = z.object({
   name: z.string().min(2, "Nom requis"),
   email: z.string().email("Email invalide"),
@@ -28,7 +29,7 @@ const Register = () => {
   const onSubmit = async (data: FormData) => {
     setIsSaving(true);
     try {
-      const userRes = await fetch("http://localhost:3000/api/user", {
+      const userRes = await fetch(`${BACKEND}/api/user`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
