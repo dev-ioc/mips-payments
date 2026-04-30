@@ -1,14 +1,18 @@
 // mips-pay.tsx - Version corrigée sans localStorage
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
-declare global {
-  interface Window {
-    wix: any;
-    Wix: any;
-    wixEmbedsAPI: any;
-  }
+// declare global {
+//   interface Window {
+//     wix: any;
+//     Wix: any;
+//     wixEmbedsAPI: any;
+//   }
+// }
+interface Window {
+  wix: any;
+  Wix: any;
+  wixEmbedsAPI: any;
 }
-
 class MipsPay extends HTMLElement {
   static get observedAttributes() {
     return [
@@ -463,4 +467,4 @@ if (!customElements.get("mips-pay")) {
   customElements.define("mips-pay", MipsPay);
 }
 
-export default MipsPay;
+// export default MipsPay;
