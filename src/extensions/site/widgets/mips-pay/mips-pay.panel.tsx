@@ -396,7 +396,7 @@ const Panel: FC = () => {
             <TextButton
               size="small"
               as="a"
-              href="https://dashboard.mipspay.mu"
+              href="https://mips-payments.dev-mdg.workers.dev"
               target="_blank"
             >
               Configurer mes credentials MiPS →
