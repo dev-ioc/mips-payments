@@ -16,7 +16,7 @@ import {
   Loader,
   TextButton,
 } from "@wix/design-system";
-// import "@wix/design-system/styles.global.css";
+import "@wix/design-system/styles.global.css";
 
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
