@@ -16,7 +16,7 @@ import {
   Loader,
   TextButton,
 } from "@wix/design-system";
-import "@wix/design-system/styles.global.css";
+// import "@wix/design-system/styles.global.css";
 
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
@@ -30,6 +30,7 @@ interface MipsConfig {
   "sending-mode": string;
   "request-mode": string;
   "public-key-input": string;
+  "amount-source": string;
 }
 
 const CURRENCY_OPTIONS = [
@@ -65,6 +66,7 @@ const Panel: FC = () => {
     "public-key-input": "",
     "sending-mode": "link",
     "request-mode": "simple",
+    "amount-source": "cart",
   });
 
   const [saving, setSaving] = useState(false);
@@ -84,6 +86,7 @@ const Panel: FC = () => {
       "public-key",
       "sending-mode",
       "request-mode",
+      "amount-source",
     ];
 
     Promise.all(keys.map((k) => widget.getProp(k).then((v) => ({ k, v }))))
@@ -234,7 +237,10 @@ const Panel: FC = () => {
       }, 4000);
     }
   };
-
+  const AMOUNT_SOURCE_OPTIONS = [
+    { id: "cart", value: "Panier Wix (automatique)" },
+    { id: "fixed", value: "Montant fixe" },
+  ];
   return (
     <WixDesignSystemProvider>
       <SidePanel width="300" height="100vh">
@@ -332,7 +338,17 @@ const Panel: FC = () => {
               />
             </FormField>
           </SidePanel.Field>
-
+          <SidePanel.Field>
+            <FormField label="Source du montant">
+              <Dropdown
+                selectedId={config["amount-source"] || "cart"}
+                options={AMOUNT_SOURCE_OPTIONS}
+                onSelect={(opt) =>
+                  updateProp("amount-source", opt.id as string)
+                }
+              />
+            </FormField>
+          </SidePanel.Field>
           <SidePanel.Field>
             <FormField label="Montant fixe">
               <NumberInput

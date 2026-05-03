@@ -108,7 +108,7 @@ class MipsPay extends HTMLElement {
   }
 
   private get amountSource() {
-    return this.getAttribute("amount-source") || "fixed";
+    return this.getAttribute("amount-source") || "cart";
   }
 
   private get amountSelector() {
