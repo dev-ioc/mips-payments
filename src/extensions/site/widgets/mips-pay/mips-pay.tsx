@@ -48,11 +48,20 @@ class MipsPay extends HTMLElement {
   async connectedCallback() {
     this.render();
     this.attachEvents();
+
+    // Attendre que Wix injecte les attributs via widget.setProp
+    await new Promise((resolve) => setTimeout(resolve, 300));
+
     await this.updateDynamicAmount();
     this.listenToCartChanges();
   }
-
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
+    console.log(`[MiPS] attributeChanged: ${name} = ${newValue}`);
+
+    if (name === "public-key" && newValue) {
+      console.log("[MiPS] Clé publique reçue ✅");
+    }
+
     this.render();
     this.attachEvents();
   }

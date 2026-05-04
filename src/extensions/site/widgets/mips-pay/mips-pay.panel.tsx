@@ -95,7 +95,11 @@ const Panel: FC = () => {
           if (v) loaded[k] = v;
         });
 
-        setConfig((prev) => ({ ...prev, ...loaded }));
+        setConfig((prev) => ({
+          ...prev,
+          ...loaded,
+          "public-key-input": loaded["public-key"] || prev["public-key-input"], // ← sync visuelle
+        }));
 
         if (loaded["public-key"]) {
           verifyPublicKey(loaded["public-key"]);
