@@ -30,6 +30,10 @@ interface MipsConfig {
   "request-mode": string;
   "public-key-input": string;
   "amount-source": string;
+  "id-merchant": string;
+  "id-entity": string;
+  "id-operator": string;
+  "operator-password": string;
 }
 
 const CURRENCY_OPTIONS = [
@@ -66,6 +70,10 @@ const Panel: FC = () => {
     "sending-mode": "link",
     "request-mode": "simple",
     "amount-source": "cart",
+    "id-merchant": "",
+    "id-entity": "",
+    "id-operator": "",
+    "operator-password": "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -86,6 +94,10 @@ const Panel: FC = () => {
       "sending-mode",
       "request-mode",
       "amount-source",
+      "id-merchant",
+      "id-entity",
+      "id-operator",
+      "operator-password",
     ];
 
     Promise.all(keys.map((k) => widget.getProp(k).then((v) => ({ k, v }))))
@@ -130,15 +142,20 @@ const Panel: FC = () => {
         setSaveMessage(
           "Clé publique valide ! Configuration chargée et sauvegardée.",
         );
-        if (data.merchant.currency) {
+        if (data.merchant.id_merchant)
+          updateProp("id-merchant", String(data.merchant.id_merchant));
+        if (data.merchant.id_entity)
+          updateProp("id-entity", String(data.merchant.id_entity));
+        if (data.merchant.id_operator)
+          updateProp("id-operator", String(data.merchant.id_operator));
+        if (data.merchant.operator_password)
+          updateProp("operator-password", data.merchant.operator_password);
+        if (data.merchant.currency)
           updateProp("currency", data.merchant.currency);
-        }
-        if (data.merchant.sending_mode) {
+        if (data.merchant.sending_mode)
           updateProp("sending-mode", data.merchant.sending_mode);
-        }
-        if (data.merchant.request_mode) {
+        if (data.merchant.request_mode)
           updateProp("request-mode", data.merchant.request_mode);
-        }
       } else {
         setSaveStatus("error");
         setSaveMessage("Clé publique invalide. Veuillez vérifier votre clé.");

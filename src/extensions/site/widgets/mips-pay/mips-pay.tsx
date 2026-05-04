@@ -25,6 +25,10 @@ class MipsPay extends HTMLElement {
       "request-mode",
       "amount-source",
       "amount-selector",
+      "id-merchant",
+      "id-entity",
+      "id-operator",
+      "operator-password",
     ];
   }
 
@@ -99,7 +103,18 @@ class MipsPay extends HTMLElement {
   private get requestMode() {
     return this.getAttribute("request-mode") || "simple";
   }
-
+  private get idMerchant() {
+    return this.getAttribute("id-merchant") || "";
+  }
+  private get idEntity() {
+    return this.getAttribute("id-entity") || "";
+  }
+  private get idOperator() {
+    return this.getAttribute("id-operator") || "";
+  }
+  private get operatorPassword() {
+    return this.getAttribute("operator-password") || "";
+  }
   private get amountSource() {
     return this.getAttribute("amount-source") || "cart";
   }
@@ -232,10 +247,15 @@ class MipsPay extends HTMLElement {
   }
 
   private async handlePay() {
-    const currentPublicKey = this.publicKey;
-    if (!currentPublicKey) {
+    const hasCredentials =
+      this.idMerchant &&
+      this.idEntity &&
+      this.idOperator &&
+      this.operatorPassword;
+    const hasPublicKey = this.publicKey;
+    if (!hasCredentials && !hasPublicKey) {
       this.error =
-        "Widget non configuré. Veuillez configurer votre clé publique.";
+        "Widget non configuré. Veuillez configurer votre clé publique dans le panneau.";
       this.render();
       this.attachEvents();
       return;
@@ -258,7 +278,19 @@ class MipsPay extends HTMLElement {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          public_key: currentPublicKey,
+          ...(hasCredentials
+            ? {
+                id_merchant: this.idMerchant,
+                id_entity: this.idEntity,
+                id_operator: this.idOperator,
+                operator_password: this.operatorPassword,
+                currency: this.currency,
+                sending_mode: this.sendingMode,
+                request_mode: this.requestMode,
+              }
+            : {
+                public_key: this.publicKey,
+              }),
           amount: this.dynamicAmount,
           title: this.paymentTitle,
           redirect_url: window.location.href,
