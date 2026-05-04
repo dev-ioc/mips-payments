@@ -46,6 +46,10 @@ class MipsPay extends HTMLElement {
   }
 
   async connectedCallback() {
+    if (!this.getAttribute("public-key")) {
+      const stored = localStorage.getItem("mips-public-key");
+      if (stored) this.setAttribute("public-key", stored);
+    }
     this.render();
     this.attachEvents();
     await this.updateDynamicAmount();
@@ -58,18 +62,14 @@ class MipsPay extends HTMLElement {
   }
 
   private get publicKey() {
-    let key = this.getAttribute("public-key-input") || "";
+    // 1. Attribut direct (source principale)
+    let key = this.getAttribute("public-key") || "";
 
+    // 2. Fallback localStorage (même domaine)
     if (!key && typeof window !== "undefined") {
-      key = (window as any).MIPS_PUBLIC_KEY || "";
-      if (key) {
-        console.log("Clé chargée depuis variable globale");
-      }
+      key = localStorage.getItem("mips-public-key") || "";
     }
 
-    if (!key) {
-      key = this.DEFAULT_PUBLIC_KEY;
-    }
     return key;
   }
 
