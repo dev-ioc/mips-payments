@@ -58,8 +58,7 @@ class MipsPay extends HTMLElement {
   }
 
   private get publicKey() {
-    // return this.getAttribute("public-key") || "";
-    let key = this.getAttribute("public-key") || "";
+    let key = this.getAttribute("public-key-input") || "";
 
     if (!key && typeof window !== "undefined") {
       key = (window as any).MIPS_PUBLIC_KEY || "";
