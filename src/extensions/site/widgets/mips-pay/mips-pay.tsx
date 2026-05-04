@@ -5,7 +5,6 @@ interface Window {
   Wix: any;
   wixEmbedsAPI: any;
 }
-
 class MipsPay extends HTMLElement {
   static get observedAttributes() {
     return [
