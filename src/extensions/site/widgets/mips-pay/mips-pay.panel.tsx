@@ -1,4 +1,3 @@
-// panel.tsx - Version avec sauvegarde automatique après vérification
 import React, { type FC, useState, useEffect, useCallback } from "react";
 import { widget } from "@wix/editor";
 import {
@@ -104,32 +103,20 @@ const Panel: FC = () => {
       })
       .catch(console.error);
   }, []);
-
-  // Fonction pour sauvegarder la clé à plusieurs endroits
   const savePublicKey = useCallback((publicKey: string) => {
     console.log("💾 Sauvegarde automatique de la clé:", publicKey);
 
-    // 1. Sauvegarder via widget API
     widget.setProp("public-key", publicKey);
-
-    // 2. Sauvegarder dans localStorage
     localStorage.setItem("mips_public_key", publicKey);
-
-    // 3. Sauvegarder comme variable globale
     if (typeof window !== "undefined") {
       (window as any).MIPS_PUBLIC_KEY = publicKey;
     }
-
-    // 4. Sauvegarder comme attribut direct sur l'élément widget
     setTimeout(() => {
       const widgetElement = document.querySelector("mips-pay");
       if (widgetElement) {
         widgetElement.setAttribute("public-key", publicKey);
-        console.log("✅ Clé ajoutée comme attribut sur l'élément widget");
       }
     }, 100);
-
-    // Mettre à jour l'état
     setConfig((prev) => ({ ...prev, "public-key": publicKey }));
   }, []);
 
@@ -144,15 +131,12 @@ const Panel: FC = () => {
       const data = await res.json();
 
       if (data.valid) {
-        // ✅ Clé valide - Sauvegarde automatique
         savePublicKey(publicKey);
 
         setSaveStatus("success");
         setSaveMessage(
-          "✅ Clé publique valide ! Configuration chargée et sauvegardée.",
+          "Clé publique valide ! Configuration chargée et sauvegardée.",
         );
-
-        // Mettre à jour la configuration avec les données du merchant
         if (data.merchant.currency) {
           updateProp("currency", data.merchant.currency);
         }
@@ -164,13 +148,11 @@ const Panel: FC = () => {
         }
       } else {
         setSaveStatus("error");
-        setSaveMessage(
-          "❌ Clé publique invalide. Veuillez vérifier votre clé.",
-        );
+        setSaveMessage("Clé publique invalide. Veuillez vérifier votre clé.");
       }
     } catch (err) {
       setSaveStatus("error");
-      setSaveMessage("❌ Impossible de vérifier la clé publique.");
+      setSaveMessage("Impossible de vérifier la clé publique.");
     } finally {
       setVerifying(false);
       setTimeout(() => {
@@ -221,14 +203,14 @@ const Panel: FC = () => {
 
       if (res.ok && data.success) {
         setSaveStatus("success");
-        setSaveMessage("✅ Configuration enregistrée !");
+        setSaveMessage("Configuration enregistrée !");
       } else {
         setSaveStatus("error");
-        setSaveMessage(data.error || "❌ Erreur lors de l'enregistrement.");
+        setSaveMessage(data.error || "Erreur lors de l'enregistrement.");
       }
     } catch (err) {
       setSaveStatus("error");
-      setSaveMessage("❌ Impossible de joindre le serveur.");
+      setSaveMessage("Impossible de joindre le serveur.");
     } finally {
       setSaving(false);
       setTimeout(() => {
@@ -292,8 +274,6 @@ const Panel: FC = () => {
           )}
 
           <Divider />
-
-          {/* ── Apparence ── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
               🎨 Apparence
