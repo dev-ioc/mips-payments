@@ -252,10 +252,8 @@ class MipsPay extends HTMLElement {
       this.idEntity &&
       this.idOperator &&
       this.operatorPassword;
-    const hasPublicKey = this.publicKey;
-    if (!hasCredentials && !hasPublicKey) {
-      this.error =
-        "Widget non configuré. Veuillez configurer votre clé publique dans le panneau.";
+    if (!hasCredentials) {
+      this.error = "Credentials non configurés dans le paramètres";
       this.render();
       this.attachEvents();
       return;
