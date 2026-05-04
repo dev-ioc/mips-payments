@@ -1,3 +1,5 @@
+// panel.tsx - Version corrigée avec meilleure sauvegarde
+
 import React, { type FC, useState, useEffect, useCallback } from "react";
 import { widget } from "@wix/editor";
 import {
@@ -58,6 +60,11 @@ const REQUEST_MODE_OPTIONS = [
   { id: "bill_presentment", value: "Présentation de facture" },
 ];
 
+const AMOUNT_SOURCE_OPTIONS = [
+  { id: "cart", value: "Panier Wix (automatique)" },
+  { id: "fixed", value: "Montant fixe" },
+];
+
 const Panel: FC = () => {
   const [config, setConfig] = useState<MipsConfig>({
     "button-text": "Payer avec MiPS",
@@ -84,6 +91,10 @@ const Panel: FC = () => {
   const [verifying, setVerifying] = useState(false);
 
   useEffect(() => {
+    loadConfig();
+  }, []);
+
+  const loadConfig = async () => {
     const keys: (keyof MipsConfig)[] = [
       "button-text",
       "button-color",
@@ -100,69 +111,120 @@ const Panel: FC = () => {
       "operator-password",
     ];
 
-    Promise.all(keys.map((k) => widget.getProp(k).then((v) => ({ k, v }))))
-      .then((results) => {
-        const loaded: Partial<MipsConfig> = {};
-        results.forEach(({ k, v }) => {
-          if (v) loaded[k] = v;
-        });
-
-        setConfig((prev) => ({
-          ...prev,
-          ...loaded,
-          "public-key-input": loaded["public-key"] || prev["public-key-input"], // ← sync visuelle
-        }));
-
-        if (loaded["public-key"]) {
-          verifyPublicKey(loaded["public-key"]);
+    try {
+      const results = await Promise.all(
+        keys.map((k) => widget.getProp(k).then((v) => ({ k, v }))),
+      );
+      const loaded: Partial<MipsConfig> = {};
+      results.forEach(({ k, v }) => {
+        if (v && v !== "undefined" && v !== "null") {
+          loaded[k] = v;
         }
-      })
-      .catch(console.error);
-  }, []);
-  const savePublicKey = useCallback((publicKey: string) => {
+      });
+
+      setConfig((prev) => ({
+        ...prev,
+        ...loaded,
+        "public-key-input": loaded["public-key"] || prev["public-key-input"],
+      }));
+
+      // Si on a une clé publique, vérifier automatiquement
+      if (loaded["public-key"]) {
+        verifyPublicKey(loaded["public-key"]);
+      }
+    } catch (error) {
+      console.error("Erreur chargement config:", error);
+    }
+  };
+
+  const savePublicKey = useCallback(async (publicKey: string) => {
     console.log("💾 Sauvegarde automatique de la clé:", publicKey);
-    widget.setProp("public-key", publicKey);
-    setConfig((prev) => ({ ...prev, "public-key": publicKey }));
+    try {
+      await widget.setProp("public-key", publicKey);
+      setConfig((prev) => ({ ...prev, "public-key": publicKey }));
+      return true;
+    } catch (error) {
+      console.error("Erreur sauvegarde clé:", error);
+      return false;
+    }
+  }, []);
+
+  const saveCredentials = useCallback(async (credentials: any) => {
+    console.log("💾 Sauvegarde des credentials");
+    try {
+      if (credentials.id_merchant)
+        await widget.setProp("id-merchant", String(credentials.id_merchant));
+      if (credentials.id_entity)
+        await widget.setProp("id-entity", String(credentials.id_entity));
+      if (credentials.id_operator)
+        await widget.setProp("id-operator", String(credentials.id_operator));
+      if (credentials.operator_password)
+        await widget.setProp(
+          "operator-password",
+          credentials.operator_password,
+        );
+      if (credentials.currency)
+        await widget.setProp("currency", credentials.currency);
+      if (credentials.sending_mode)
+        await widget.setProp("sending-mode", credentials.sending_mode);
+      if (credentials.request_mode)
+        await widget.setProp("request-mode", credentials.request_mode);
+
+      setConfig((prev) => ({
+        ...prev,
+        "id-merchant": String(credentials.id_merchant || ""),
+        "id-entity": String(credentials.id_entity || ""),
+        "id-operator": String(credentials.id_operator || ""),
+        "operator-password": credentials.operator_password || "",
+        currency: credentials.currency || prev.currency,
+        "sending-mode": credentials.sending_mode || prev["sending-mode"],
+        "request-mode": credentials.request_mode || prev["request-mode"],
+      }));
+      return true;
+    } catch (error) {
+      console.error("Erreur sauvegarde credentials:", error);
+      return false;
+    }
   }, []);
 
   const verifyPublicKey = async (publicKey: string) => {
-    if (!publicKey) return;
+    if (!publicKey || verifying) return;
 
     setVerifying(true);
+    setSaveStatus("idle");
+    setSaveMessage("");
+
     try {
       const res = await fetch(
-        `${BACKEND}/api/merchant/verify-public-key?public_key=${publicKey}`,
+        `${BACKEND}/api/merchant/verify-public-key?public_key=${encodeURIComponent(publicKey)}`,
       );
       const data = await res.json();
 
       if (data.valid) {
-        savePublicKey(publicKey);
+        // Sauvegarder la clé publique
+        await savePublicKey(publicKey);
+
+        // Sauvegarder les credentials
+        if (data.merchant) {
+          await saveCredentials(data.merchant);
+        }
 
         setSaveStatus("success");
         setSaveMessage(
-          "Clé publique valide ! Configuration chargée et sauvegardée.",
+          "✅ Clé publique valide ! Configuration chargée et sauvegardée.",
         );
-        if (data.merchant.id_merchant)
-          updateProp("id-merchant", String(data.merchant.id_merchant));
-        if (data.merchant.id_entity)
-          updateProp("id-entity", String(data.merchant.id_entity));
-        if (data.merchant.id_operator)
-          updateProp("id-operator", String(data.merchant.id_operator));
-        if (data.merchant.operator_password)
-          updateProp("operator-password", data.merchant.operator_password);
-        if (data.merchant.currency)
-          updateProp("currency", data.merchant.currency);
-        if (data.merchant.sending_mode)
-          updateProp("sending-mode", data.merchant.sending_mode);
-        if (data.merchant.request_mode)
-          updateProp("request-mode", data.merchant.request_mode);
       } else {
         setSaveStatus("error");
-        setSaveMessage("Clé publique invalide. Veuillez vérifier votre clé.");
+        setSaveMessage(
+          "❌ Clé publique invalide. Veuillez vérifier votre clé.",
+        );
       }
     } catch (err) {
+      console.error("Erreur vérification:", err);
       setSaveStatus("error");
-      setSaveMessage("Impossible de vérifier la clé publique.");
+      setSaveMessage(
+        "❌ Impossible de vérifier la clé publique. Vérifiez votre connexion.",
+      );
     } finally {
       setVerifying(false);
       setTimeout(() => {
@@ -170,14 +232,18 @@ const Panel: FC = () => {
           setSaveStatus("idle");
           setSaveMessage("");
         }
-      }, 4000);
+      }, 5000);
     }
   };
 
   const updateProp = useCallback(
-    <K extends keyof MipsConfig>(key: K, value: string) => {
+    async <K extends keyof MipsConfig>(key: K, value: string) => {
       setConfig((prev) => ({ ...prev, [key]: value }));
-      widget.setProp(key, value);
+      try {
+        await widget.setProp(key, value);
+      } catch (error) {
+        console.error(`Erreur sauvegarde ${key}:`, error);
+      }
     },
     [],
   );
@@ -188,51 +254,6 @@ const Panel: FC = () => {
     }
   };
 
-  const handleSaveAllConfig = async () => {
-    setSaving(true);
-    setSaveStatus("idle");
-    setSaveMessage("");
-
-    try {
-      const res = await fetch(`${BACKEND}/api/merchant/save-config`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          public_key: config["public-key"] || config["public-key-input"],
-          currency: config["currency"],
-          sending_mode: config["sending-mode"],
-          request_mode: config["request-mode"],
-          button_text: config["button-text"],
-          button_color: config["button-color"],
-          payment_title: config["payment-title"],
-          amount: config["amount"],
-        }),
-      });
-
-      const data = await res.json();
-
-      if (res.ok && data.success) {
-        setSaveStatus("success");
-        setSaveMessage("Configuration enregistrée !");
-      } else {
-        setSaveStatus("error");
-        setSaveMessage(data.error || "Erreur lors de l'enregistrement.");
-      }
-    } catch (err) {
-      setSaveStatus("error");
-      setSaveMessage("Impossible de joindre le serveur.");
-    } finally {
-      setSaving(false);
-      setTimeout(() => {
-        setSaveStatus("idle");
-        setSaveMessage("");
-      }, 4000);
-    }
-  };
-  const AMOUNT_SOURCE_OPTIONS = [
-    { id: "cart", value: "Panier Wix (automatique)" },
-    { id: "fixed", value: "Montant fixe" },
-  ];
   return (
     <WixDesignSystemProvider>
       <SidePanel width="300" height="100vh">
@@ -275,6 +296,30 @@ const Panel: FC = () => {
             </FormField>
           </SidePanel.Field>
 
+          {verifying && (
+            <SidePanel.Field>
+              <SectionHelper fullWidth appearance="info">
+                ⏳ Vérification en cours...
+              </SectionHelper>
+            </SidePanel.Field>
+          )}
+
+          {saveStatus === "success" && (
+            <SidePanel.Field>
+              <SectionHelper fullWidth appearance="success">
+                {saveMessage}
+              </SectionHelper>
+            </SidePanel.Field>
+          )}
+
+          {saveStatus === "error" && (
+            <SidePanel.Field>
+              <SectionHelper fullWidth appearance="danger">
+                {saveMessage}
+              </SectionHelper>
+            </SidePanel.Field>
+          )}
+
           {config["public-key"] && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="success">
@@ -284,6 +329,7 @@ const Panel: FC = () => {
           )}
 
           <Divider />
+
           <SidePanel.Field>
             <Text weight="bold" size="small">
               🎨 Apparence
@@ -328,6 +374,7 @@ const Panel: FC = () => {
               />
             </FormField>
           </SidePanel.Field>
+
           <SidePanel.Field>
             <FormField label="Source du montant">
               <Dropdown
@@ -339,6 +386,7 @@ const Panel: FC = () => {
               />
             </FormField>
           </SidePanel.Field>
+
           <SidePanel.Field>
             <FormField label="Montant fixe">
               <NumberInput
@@ -365,6 +413,7 @@ const Panel: FC = () => {
           </SidePanel.Field>
 
           <Divider />
+
           <SidePanel.Field>
             <Text weight="bold" size="small">
               📤 Mode MiPS
@@ -398,6 +447,7 @@ const Panel: FC = () => {
           </SidePanel.Field>
 
           <Divider />
+
           <SidePanel.Field>
             <TextButton
               size="small"
@@ -408,31 +458,6 @@ const Panel: FC = () => {
               Configurer mes credentials MiPS →
             </TextButton>
           </SidePanel.Field>
-
-          {/* <SidePanel.Field>
-            {saving ? (
-              <Loader size="small" />
-            ) : (
-              <Button fullWidth onClick={handleSaveAllConfig}>
-                Enregistrer toute la configuration
-              </Button>
-            )}
-          </SidePanel.Field> */}
-
-          {saveStatus === "success" && (
-            <SidePanel.Field>
-              <SectionHelper fullWidth appearance="success">
-                {saveMessage}
-              </SectionHelper>
-            </SidePanel.Field>
-          )}
-          {saveStatus === "error" && (
-            <SidePanel.Field>
-              <SectionHelper fullWidth appearance="danger">
-                {saveMessage}
-              </SectionHelper>
-            </SidePanel.Field>
-          )}
         </SidePanel.Content>
 
         <SidePanel.Footer noPadding>
