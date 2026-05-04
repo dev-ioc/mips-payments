@@ -32,10 +32,6 @@ interface MipsConfig {
   "request-mode": string;
   "public-key-input": string;
   "amount-source": string;
-  "id-merchant": string;
-  "id-entity": string;
-  "id-operator": string;
-  "operator-password": string;
 }
 
 const CURRENCY_OPTIONS = [
@@ -77,10 +73,6 @@ const Panel: FC = () => {
     "sending-mode": "link",
     "request-mode": "simple",
     "amount-source": "cart",
-    "id-merchant": "",
-    "id-entity": "",
-    "id-operator": "",
-    "operator-password": "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -105,10 +97,6 @@ const Panel: FC = () => {
       "sending-mode",
       "request-mode",
       "amount-source",
-      "id-merchant",
-      "id-entity",
-      "id-operator",
-      "operator-password",
     ];
 
     try {
@@ -152,17 +140,6 @@ const Panel: FC = () => {
   const saveCredentials = useCallback(async (credentials: any) => {
     console.log("💾 Sauvegarde des credentials");
     try {
-      if (credentials.id_merchant)
-        await widget.setProp("id-merchant", String(credentials.id_merchant));
-      if (credentials.id_entity)
-        await widget.setProp("id-entity", String(credentials.id_entity));
-      if (credentials.id_operator)
-        await widget.setProp("id-operator", String(credentials.id_operator));
-      if (credentials.operator_password)
-        await widget.setProp(
-          "operator-password",
-          credentials.operator_password,
-        );
       if (credentials.currency)
         await widget.setProp("currency", credentials.currency);
       if (credentials.sending_mode)
@@ -172,10 +149,6 @@ const Panel: FC = () => {
 
       setConfig((prev) => ({
         ...prev,
-        "id-merchant": String(credentials.id_merchant || ""),
-        "id-entity": String(credentials.id_entity || ""),
-        "id-operator": String(credentials.id_operator || ""),
-        "operator-password": credentials.operator_password || "",
         currency: credentials.currency || prev.currency,
         "sending-mode": credentials.sending_mode || prev["sending-mode"],
         "request-mode": credentials.request_mode || prev["request-mode"],
@@ -211,19 +184,17 @@ const Panel: FC = () => {
 
         setSaveStatus("success");
         setSaveMessage(
-          "✅ Clé publique valide ! Configuration chargée et sauvegardée.",
+          "Clé publique valide ! Configuration chargée et sauvegardée.",
         );
       } else {
         setSaveStatus("error");
-        setSaveMessage(
-          "❌ Clé publique invalide. Veuillez vérifier votre clé.",
-        );
+        setSaveMessage("Clé publique invalide. Veuillez vérifier votre clé.");
       }
     } catch (err) {
       console.error("Erreur vérification:", err);
       setSaveStatus("error");
       setSaveMessage(
-        "❌ Impossible de vérifier la clé publique. Vérifiez votre connexion.",
+        "Impossible de vérifier la clé publique. Vérifiez votre connexion.",
       );
     } finally {
       setVerifying(false);
@@ -298,7 +269,7 @@ const Panel: FC = () => {
 
           {verifying && (
             <SidePanel.Field>
-              <SectionHelper fullWidth appearance="info">
+              <SectionHelper fullWidth appearance="success">
                 ⏳ Vérification en cours...
               </SectionHelper>
             </SidePanel.Field>
