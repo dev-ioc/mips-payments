@@ -1,4 +1,3 @@
-// mips-pay.tsx - Version corrigée sans localStorage
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
 // declare global {
@@ -58,8 +57,6 @@ class MipsPay extends HTMLElement {
     this.attachEvents();
   }
 
-  // ── Getters ──
-
   private get publicKey() {
     let key = this.getAttribute("public-key") || "";
 
@@ -70,7 +67,6 @@ class MipsPay extends HTMLElement {
       }
     }
 
-    // 3. Si toujours pas de clé, utiliser la clé par défaut pour les tests
     if (!key) {
       key = this.DEFAULT_PUBLIC_KEY;
     }
@@ -114,8 +110,6 @@ class MipsPay extends HTMLElement {
   private get amountSelector() {
     return this.getAttribute("amount-selector") || "";
   }
-
-  // ── Panier Wix ──
 
   private async getWixCartTotal(): Promise<{ amount: number; items: any[] }> {
     try {
@@ -287,7 +281,7 @@ class MipsPay extends HTMLElement {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erreur réseau";
-      console.error("❌ Erreur:", err);
+      console.error("Erreur:", err);
       this.error = `Erreur: ${msg}`;
     }
 
@@ -301,8 +295,6 @@ class MipsPay extends HTMLElement {
       this.dynamicAmount > 0 ? this.dynamicAmount : this.DEFAULT_FIXED_AMOUNT;
     return `${amount.toFixed(2)} ${this.currency}`;
   }
-
-  // ── Render ──
 
   render() {
     const displayAmount = this.getDisplayAmount();

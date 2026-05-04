@@ -107,7 +107,7 @@ const Panel: FC = () => {
     console.log("💾 Sauvegarde automatique de la clé:", publicKey);
 
     widget.setProp("public-key", publicKey);
-    localStorage.setItem("mips_public_key", publicKey);
+    localStorage.setItem("public-key", publicKey);
     if (typeof window !== "undefined") {
       (window as any).MIPS_PUBLIC_KEY = publicKey;
     }
