@@ -296,7 +296,6 @@ const CredentialsPage = () => {
   const saveCredentials = async () => {
     if (!validate()) return;
     setIsSaving(true);
-    console.log("📍 Sauvegarde avec siteId:", siteId);
 
     try {
       const headers: HeadersInit = { "Content-Type": "application/json" };
@@ -309,10 +308,6 @@ const CredentialsPage = () => {
 
       if (token && token !== "dev-token-temp") {
         headers["Authorization"] = `Bearer ${token}`;
-        console.log(
-          "Token envoyé (premiers 20 chars):",
-          token.substring(0, 20),
-        );
       } else {
         console.warn("⚠️ Pas de token d'authentification disponible");
       }
