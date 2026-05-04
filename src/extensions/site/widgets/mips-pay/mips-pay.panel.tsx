@@ -105,26 +105,7 @@ const Panel: FC = () => {
   }, []);
   const savePublicKey = useCallback((publicKey: string) => {
     console.log("💾 Sauvegarde automatique de la clé:", publicKey);
-
     widget.setProp("public-key", publicKey);
-    localStorage.setItem("mips-public-key", publicKey);
-    if (typeof window !== "undefined") {
-      (window as any).MIPS_PUBLIC_KEY = publicKey;
-    }
-
-    const findAndUpdateWidget = (retries = 0) => {
-      const widgetElement = document.querySelector("mips-pay");
-      if (widgetElement) {
-        widgetElement.setAttribute("public-key", publicKey);
-      } else if (retries < 10) {
-        setTimeout(() => findAndUpdateWidget(retries + 1), 200);
-      } else {
-        console.warn("Could not find mips-pay element to update public-key");
-      }
-    };
-
-    findAndUpdateWidget();
-
     setConfig((prev) => ({ ...prev, "public-key": publicKey }));
   }, []);
 
