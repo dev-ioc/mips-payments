@@ -1,17 +1,11 @@
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
-// declare global {
-//   interface Window {
-//     wix: any;
-//     Wix: any;
-//     wixEmbedsAPI: any;
-//   }
-// }
 interface Window {
   wix: any;
   Wix: any;
   wixEmbedsAPI: any;
 }
+
 class MipsPay extends HTMLElement {
   static get observedAttributes() {
     return [
@@ -40,6 +34,7 @@ class MipsPay extends HTMLElement {
   private qrCode = "";
   private dynamicAmount = 0;
   private cartItems: any[] = [];
+  private credentialsLoaded = false;
 
   private readonly DEFAULT_FIXED_AMOUNT = 2000;
   private readonly DEFAULT_PUBLIC_KEY = "";
@@ -56,18 +51,97 @@ class MipsPay extends HTMLElement {
     // Attendre que Wix injecte les attributs via widget.setProp
     await new Promise((resolve) => setTimeout(resolve, 300));
 
+    // Charger les credentials depuis le backend
+    await this.loadMerchantCredentials();
+
     await this.updateDynamicAmount();
     this.listenToCartChanges();
   }
+
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
     console.log(`[MiPS] attributeChanged: ${name} = ${newValue}`);
 
     if (name === "public-key" && newValue) {
       console.log("[MiPS] Clé publique reçue ✅");
+      // Recharger les credentials si la clé publique change
+      this.loadMerchantCredentials();
     }
 
     this.render();
     this.attachEvents();
+  }
+
+  // NOUVELLE MÉTHODE: Charge les credentials depuis le backend
+  private async loadMerchantCredentials(): Promise<boolean> {
+    const publicKey = this.publicKey;
+    if (!publicKey) {
+      console.log(
+        "[MiPS] Pas de clé publique, impossible de charger les credentials",
+      );
+      return false;
+    }
+
+    try {
+      console.log(
+        "[MiPS] Chargement des credentials pour la clé:",
+        publicKey.substring(0, 20) + "...",
+      );
+      const res = await fetch(
+        `${BACKEND}/api/merchant/get-credentials?public_key=${encodeURIComponent(publicKey)}`,
+      );
+      const data = await res.json();
+
+      if (data.success && data.credentials) {
+        console.log("[MiPS] Credentials chargés avec succès ✅");
+
+        // Mettre à jour les attributs avec les credentials récupérés
+        if (data.credentials.id_merchant) {
+          this.setAttribute(
+            "id-merchant",
+            String(data.credentials.id_merchant),
+          );
+          console.log(
+            "[MiPS] id_merchant mis à jour:",
+            data.credentials.id_merchant,
+          );
+        }
+        if (data.credentials.id_entity) {
+          this.setAttribute("id-entity", String(data.credentials.id_entity));
+          console.log(
+            "[MiPS] id_entity mis à jour:",
+            data.credentials.id_entity,
+          );
+        }
+        if (data.credentials.id_operator) {
+          this.setAttribute(
+            "id-operator",
+            String(data.credentials.id_operator),
+          );
+          console.log(
+            "[MiPS] id_operator mis à jour:",
+            data.credentials.id_operator,
+          );
+        }
+        if (data.credentials.operator_password) {
+          this.setAttribute(
+            "operator-password",
+            data.credentials.operator_password,
+          );
+          console.log("[MiPS] operator_password mis à jour");
+        }
+
+        this.credentialsLoaded = true;
+        return true;
+      } else {
+        console.log("[MiPS] Aucun credential trouvé pour cette clé publique");
+        this.credentialsLoaded = false;
+        return false;
+      }
+    } catch (error) {
+      console.error("[MiPS] Erreur chargement credentials:", error);
+      this.credentialsLoaded = false;
+      return false;
+    }
   }
 
   private get publicKey() {
@@ -103,18 +177,23 @@ class MipsPay extends HTMLElement {
   private get requestMode() {
     return this.getAttribute("request-mode") || "simple";
   }
+
   private get idMerchant() {
     return this.getAttribute("id-merchant") || "";
   }
+
   private get idEntity() {
     return this.getAttribute("id-entity") || "";
   }
+
   private get idOperator() {
     return this.getAttribute("id-operator") || "";
   }
+
   private get operatorPassword() {
     return this.getAttribute("operator-password") || "";
   }
+
   private get amountSource() {
     return this.getAttribute("amount-source") || "cart";
   }
@@ -246,14 +325,41 @@ class MipsPay extends HTMLElement {
     });
   }
 
+  // MÉTHODE MODIFIÉE: handlePay avec vérification des credentials
   private async handlePay() {
+    // Attendre un peu pour s'assurer que les credentials sont chargés
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    // Vérifier si les credentials sont disponibles
     const hasCredentials =
       this.idMerchant &&
       this.idEntity &&
       this.idOperator &&
       this.operatorPassword;
+
+    console.log("[MiPS] Vérification credentials:", {
+      hasCredentials,
+      idMerchant: !!this.idMerchant,
+      idEntity: !!this.idEntity,
+      idOperator: !!this.idOperator,
+      operatorPassword: !!this.operatorPassword,
+      credentialsLoaded: this.credentialsLoaded,
+    });
+
     if (!hasCredentials) {
-      this.error = "Credentials non configurés dans le paramètres";
+      let errorMsg = "Credentials non configurés dans les paramètres.\n\n";
+      if (!this.publicKey) {
+        errorMsg +=
+          "❌ Clé publique manquante. Veuillez configurer votre clé publique dans les paramètres du widget.";
+      } else if (!this.credentialsLoaded) {
+        errorMsg +=
+          "🔑 Impossible de charger les credentials associés à cette clé publique.\n\nVérifiez que votre clé publique est correcte et que des credentials ont été enregistrés dans le backend.";
+      } else {
+        errorMsg +=
+          "⚠️ Credentials incomplets. Veuillez vérifier la configuration dans votre compte MiPS.";
+      }
+
+      this.error = errorMsg;
       this.render();
       this.attachEvents();
       return;
@@ -272,31 +378,29 @@ class MipsPay extends HTMLElement {
     this.attachEvents();
 
     try {
+      const payload = {
+        id_merchant: this.idMerchant,
+        id_entity: this.idEntity,
+        id_operator: this.idOperator,
+        operator_password: this.operatorPassword,
+        amount: this.dynamicAmount,
+        title: this.paymentTitle,
+        currency: this.currency,
+        sending_mode: this.sendingMode,
+        request_mode: this.requestMode,
+        redirect_url: window.location.href,
+      };
+
+      console.log("[MiPS] Envoi de la requête de paiement avec credentials");
+
       const res = await fetch(`${BACKEND}/api/create-payment`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ...(hasCredentials
-            ? {
-                id_merchant: this.idMerchant,
-                id_entity: this.idEntity,
-                id_operator: this.idOperator,
-                operator_password: this.operatorPassword,
-                currency: this.currency,
-                sending_mode: this.sendingMode,
-                request_mode: this.requestMode,
-              }
-            : {
-                public_key: this.publicKey,
-              }),
-          amount: this.dynamicAmount,
-          title: this.paymentTitle,
-          redirect_url: window.location.href,
-        }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
-      console.log("📥 Réponse backend:", data);
+      console.log("[MiPS] Réponse backend:", data);
 
       if (data.payment_link) {
         this.paymentLink = data.payment_link;
@@ -308,7 +412,7 @@ class MipsPay extends HTMLElement {
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erreur réseau";
-      console.error("Erreur:", err);
+      console.error("[MiPS] Erreur:", err);
       this.error = `Erreur: ${msg}`;
     }
 
@@ -325,6 +429,12 @@ class MipsPay extends HTMLElement {
 
   render() {
     const displayAmount = this.getDisplayAmount();
+    const hasPublicKey = !!this.publicKey;
+    const hasCredentials =
+      this.idMerchant &&
+      this.idEntity &&
+      this.idOperator &&
+      this.operatorPassword;
 
     this.shadow.innerHTML = `
       <style>
@@ -341,6 +451,16 @@ class MipsPay extends HTMLElement {
           padding: 8px; 
           background: #FEE2E2; 
           border-radius: 6px;
+          white-space: pre-line;
+        }
+
+        .warning {
+          color: #D97706;
+          font-size: 13px;
+          margin-bottom: 8px;
+          padding: 8px;
+          background: #FEF3C7;
+          border-radius: 6px;
         }
 
         .pay-btn {
@@ -348,16 +468,17 @@ class MipsPay extends HTMLElement {
           padding: 14px; 
           border-radius: 10px; 
           border: none;
-          background: ${this.loading ? "#93C5FD" : this.buttonColor};
+          background: ${this.loading ? "#93C5FD" : hasCredentials ? this.buttonColor : "#9CA3AF"};
           color: #fff; 
           font-size: 16px; 
           font-weight: 700;
-          cursor: pointer;
+          cursor: ${hasCredentials && !this.loading ? "pointer" : "not-allowed"};
           display: flex; 
           align-items: center; 
           justify-content: center; 
           gap: 8px;
           transition: all 0.2s;
+          opacity: ${hasCredentials ? 1 : 0.6};
         }
         .pay-btn:hover:not(:disabled) { 
           opacity: 0.92; 
@@ -447,9 +568,33 @@ class MipsPay extends HTMLElement {
       </style>
 
       <div class="container">
-        ${this.error ? `<div class="error">❌ ${this.error}</div>` : ""}
+        ${
+          !hasPublicKey
+            ? `
+          <div class="error">
+            ⚠️ Configuration manquante<br/>
+            Veuillez configurer votre clé publique MiPS dans les paramètres du widget.
+          </div>
+        `
+            : !hasCredentials && hasPublicKey
+              ? `
+          <div class="warning">
+            ⏳ Chargement de la configuration MiPS...<br/>
+            <small>Veuillez patienter pendant le chargement de vos paramètres de paiement.</small>
+          </div>
+        `
+              : this.error
+                ? `
+          <div class="error">❌ ${this.error}</div>
+        `
+                : ""
+        }
 
-        <button id="mips-pay-btn" class="pay-btn" ${this.loading ? "disabled" : ""}>
+        <button 
+          id="mips-pay-btn" 
+          class="pay-btn" 
+          ${this.loading || !hasCredentials ? "disabled" : ""}
+        >
           ${this.loading ? "⏳ Traitement..." : `💳 ${this.buttonText} — ${displayAmount}`}
         </button>
 
