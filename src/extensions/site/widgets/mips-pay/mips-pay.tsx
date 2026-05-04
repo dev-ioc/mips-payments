@@ -58,19 +58,20 @@ class MipsPay extends HTMLElement {
   }
 
   private get publicKey() {
-    let key = this.getAttribute("public-key") || "";
+    return this.getAttribute("public-key") || "";
+    // let key = this.getAttribute("public-key") || "";
 
-    if (!key && typeof window !== "undefined") {
-      key = (window as any).MIPS_PUBLIC_KEY || "";
-      if (key) {
-        console.log("Clé chargée depuis variable globale");
-      }
-    }
+    // if (!key && typeof window !== "undefined") {
+    //   key = (window as any).MIPS_PUBLIC_KEY || "";
+    //   if (key) {
+    //     console.log("Clé chargée depuis variable globale");
+    //   }
+    // }
 
-    if (!key) {
-      key = this.DEFAULT_PUBLIC_KEY;
-    }
-    return key;
+    // if (!key) {
+    //   key = this.DEFAULT_PUBLIC_KEY;
+    // }
+    // return key;
   }
 
   private get buttonText() {
