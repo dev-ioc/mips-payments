@@ -19,6 +19,11 @@ class MipsPay extends HTMLElement {
       "request-mode",
       "amount-source",
       "amount-selector",
+      // ── Nouveaux credentials ──
+      "id-merchant",
+      "id-entity",
+      "operator-id",
+      "operator-password",
     ];
   }
 
@@ -31,6 +36,7 @@ class MipsPay extends HTMLElement {
   private dynamicAmount = 0;
   private cartItems: any[] = [];
   private loadingCredentials = false;
+  private credentialsLoaded = false;
 
   private readonly DEFAULT_FIXED_AMOUNT = 2000;
 
@@ -44,10 +50,15 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachEvents();
 
-    // Attendre que Wix injecte les attributs via widget.setProp
     await new Promise((resolve) => setTimeout(resolve, 500));
 
     console.log("[MiPS] Clé publique après chargement:", this.publicKey);
+
+    if (this.publicKey) {
+      await this.loadMerchantCredentials(this.publicKey);
+    } else {
+      console.log("[MiPS] Pas de clé publique");
+    }
 
     await this.updateDynamicAmount();
     this.listenToCartChanges();
@@ -61,19 +72,88 @@ class MipsPay extends HTMLElement {
         "[MiPS] Clé publique reçue",
         newValue.substring(0, 20) + "...",
       );
+      // Charger les credentials dès que la clé arrive
+      if (!this.credentialsLoaded) {
+        console.log(
+          "[MiPS] Chargement des credentials pour:",
+          newValue.substring(0, 20) + "...",
+        );
+        this.loadMerchantCredentials(newValue);
+      }
     }
 
     this.render();
     this.attachEvents();
   }
 
+  private async loadMerchantCredentials(
+    publicKey: string,
+    attempt = 1,
+  ): Promise<void> {
+    const MAX_ATTEMPTS = 3;
+    try {
+      const res = await fetch(
+        `${BACKEND}/api/merchant/get-credentials?public_key=${encodeURIComponent(publicKey)}`,
+      );
+      const data = await res.json();
+      console.log("[MiPS] Réponse credentials:", data);
+
+      const m = data?.merchant;
+      if (
+        m?.id_merchant &&
+        m?.id_entity &&
+        m?.operator_id &&
+        m?.operator_password
+      ) {
+        // Stocker dans les attributs pour que handlePay puisse les lire
+        this.setAttribute("id-merchant", m.id_merchant);
+        this.setAttribute("id-entity", m.id_entity);
+        this.setAttribute("operator-id", m.operator_id);
+        this.setAttribute("operator-password", m.operator_password);
+        if (m.currency) this.setAttribute("currency", m.currency);
+        if (m.sending_mode) this.setAttribute("sending-mode", m.sending_mode);
+        if (m.request_mode) this.setAttribute("request-mode", m.request_mode);
+
+        this.credentialsLoaded = true;
+        this.loadingCredentials = false;
+        console.log("[MiPS] ✅ Credentials chargés avec succès");
+        this.render();
+        this.attachEvents();
+      } else {
+        console.log("[MiPS] ❌ Aucun credential trouvé");
+        if (attempt < MAX_ATTEMPTS) {
+          console.log(
+            `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
+          );
+          await new Promise((r) => setTimeout(r, 2000));
+          return this.loadMerchantCredentials(publicKey, attempt + 1);
+        } else {
+          this.loadingCredentials = false;
+          this.error =
+            "Impossible de charger la configuration MiPS. Vérifiez votre clé publique.";
+          this.render();
+          this.attachEvents();
+        }
+      }
+    } catch (err) {
+      console.error("[MiPS] Erreur chargement credentials:", err);
+      if (attempt < MAX_ATTEMPTS) {
+        console.log(
+          `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
+        );
+        await new Promise((r) => setTimeout(r, 2000));
+        return this.loadMerchantCredentials(publicKey, attempt + 1);
+      } else {
+        this.loadingCredentials = false;
+        this.error = `Erreur réseau: impossible de joindre le serveur MiPS.`;
+        this.render();
+        this.attachEvents();
+      }
+    }
+  }
+
   private get publicKey() {
-    const key = this.getAttribute("public-key") || "";
-    console.log(
-      "[MiPS] get publicKey:",
-      key ? key.substring(0, 20) + "..." : "vide",
-    );
-    return key;
+    return this.getAttribute("public-key") || "";
   }
 
   private get buttonText() {
@@ -86,8 +166,7 @@ class MipsPay extends HTMLElement {
 
   private get fixedAmount() {
     const amount = parseFloat(this.getAttribute("amount") || "0");
-    if (amount > 0) return amount;
-    return this.DEFAULT_FIXED_AMOUNT;
+    return amount > 0 ? amount : this.DEFAULT_FIXED_AMOUNT;
   }
 
   private get currency() {
@@ -114,6 +193,22 @@ class MipsPay extends HTMLElement {
     return this.getAttribute("amount-selector") || "";
   }
 
+  private get idMerchant() {
+    return this.getAttribute("id-merchant") || "";
+  }
+
+  private get idEntity() {
+    return this.getAttribute("id-entity") || "";
+  }
+
+  private get operatorId() {
+    return this.getAttribute("operator-id") || "";
+  }
+
+  private get operatorPassword() {
+    return this.getAttribute("operator-password") || "";
+  }
+
   private async getWixCartTotal(): Promise<{ amount: number; items: any[] }> {
     try {
       let retries = 0;
@@ -121,7 +216,6 @@ class MipsPay extends HTMLElement {
         await new Promise((resolve) => setTimeout(resolve, 500));
         retries++;
       }
-
       if (window.wix?.stores) {
         const cart = await window.wix.stores.getCurrentCart();
         const amount = cart.totalAmount || cart.totalPrice || 0;
@@ -130,7 +224,6 @@ class MipsPay extends HTMLElement {
           items: cart.items || [],
         };
       }
-
       if (window.Wix?.Utils) {
         return new Promise((resolve) => {
           window.Wix.getCurrentCart((cart: any) => {
@@ -142,7 +235,6 @@ class MipsPay extends HTMLElement {
           });
         });
       }
-
       return { amount: this.DEFAULT_FIXED_AMOUNT, items: [] };
     } catch (error) {
       console.error("Erreur panier Wix:", error);
@@ -171,7 +263,6 @@ class MipsPay extends HTMLElement {
   private async updateDynamicAmount(): Promise<void> {
     let amount = 0;
     let items: any[] = [];
-
     switch (this.amountSource) {
       case "cart":
         const cartData = await this.getWixCartTotal();
@@ -186,7 +277,6 @@ class MipsPay extends HTMLElement {
         amount = this.fixedAmount;
         break;
     }
-
     this.dynamicAmount = amount > 0 ? amount : this.DEFAULT_FIXED_AMOUNT;
     this.cartItems = items;
     this.render();
@@ -199,7 +289,6 @@ class MipsPay extends HTMLElement {
         await this.updateDynamicAmount();
       }
     });
-
     if (this.amountSource === "cart" || this.amountSource === "selector") {
       const observer = new MutationObserver(async () => {
         await this.updateDynamicAmount();
@@ -225,10 +314,8 @@ class MipsPay extends HTMLElement {
         this.handlePay();
       });
     }
-
     const closeBtns = this.shadow.querySelectorAll("#mips-modal-close");
     closeBtns.forEach((btn) => {
-      btn.removeEventListener("click", () => {});
       btn.addEventListener("click", () => {
         this.showModal = false;
         this.render();
@@ -238,11 +325,13 @@ class MipsPay extends HTMLElement {
   }
 
   private async handlePay() {
-    await new Promise((resolve) => setTimeout(resolve, 100));
-
-    console.log("[MiPS] Vérification credentials:", {
-      publicKeyExists: !!this.publicKey,
-    });
+    if (!this.credentialsLoaded || !this.idMerchant) {
+      this.error =
+        "Configuration MiPS non chargée. Patientez ou rechargez la page.";
+      this.render();
+      this.attachEvents();
+      return;
+    }
 
     if (!this.dynamicAmount || this.dynamicAmount <= 0) {
       this.error = "Montant invalide ou panier vide.";
@@ -263,11 +352,15 @@ class MipsPay extends HTMLElement {
         currency: this.currency,
         sending_mode: this.sendingMode,
         request_mode: this.requestMode,
-        public_key: !!this.publicKey,
+        public_key: this.publicKey,
+        id_merchant: this.idMerchant,
+        id_entity: this.idEntity,
+        operator_id: this.operatorId,
+        operator_password: this.operatorPassword,
         redirect_url: window.location.href,
       };
 
-      console.log("[MiPS] Envoi de la requête de paiement avec credentials");
+      console.log("[MiPS] Envoi de la requête de paiement");
 
       const res = await fetch(`${BACKEND}/api/create-payment`, {
         method: "POST",
@@ -306,147 +399,66 @@ class MipsPay extends HTMLElement {
   render() {
     const displayAmount = this.getDisplayAmount();
     const hasPublicKey = !!this.publicKey;
+    const isReady = this.credentialsLoaded && hasPublicKey;
 
     this.shadow.innerHTML = `
       <style>
         * { box-sizing: border-box; font-family: system-ui, -apple-system, Inter, sans-serif; }
-        .container { 
-          max-width: 400px; 
-          width: 100%;
-        }
-
+        .container { max-width: 400px; width: 100%; }
         .error {
-          color: #DC2626; 
-          font-size: 13px; 
-          margin-bottom: 8px;
-          padding: 12px; 
-          background: #FEE2E2; 
-          border-radius: 6px;
-          white-space: pre-line;
-          text-align: center;
+          color: #DC2626; font-size: 13px; margin-bottom: 8px;
+          padding: 12px; background: #FEE2E2; border-radius: 6px;
+          white-space: pre-line; text-align: center;
         }
-
         .warning {
-          color: #D97706;
-          font-size: 13px;
-          margin-bottom: 8px;
-          padding: 12px;
-          background: #FEF3C7;
-          border-radius: 6px;
-          text-align: center;
+          color: #D97706; font-size: 13px; margin-bottom: 8px;
+          padding: 12px; background: #FEF3C7; border-radius: 6px; text-align: center;
         }
-
         .info {
-          color: #3B82F6;
-          font-size: 13px;
-          margin-bottom: 8px;
-          padding: 12px;
-          background: #DBEAFE;
-          border-radius: 6px;
-          text-align: center;
+          color: #3B82F6; font-size: 13px; margin-bottom: 8px;
+          padding: 12px; background: #DBEAFE; border-radius: 6px; text-align: center;
         }
-
         .pay-btn {
-          width: 100%; 
-          padding: 14px; 
-          border-radius: 10px; 
-          border: none;
-          background: ${this.loading ? "#93C5FD" : hasPublicKey ? this.buttonColor : "#9CA3AF"};
-          color: #fff; 
-          font-size: 16px; 
-          font-weight: 700;
-          cursor: ${hasPublicKey && !this.loading ? "pointer" : "not-allowed"};
-          display: flex; 
-          align-items: center; 
-          justify-content: center; 
-          gap: 8px;
-          transition: all 0.2s;
-          opacity: ${hasPublicKey ? 1 : 0.6};
+          width: 100%; padding: 14px; border-radius: 10px; border: none;
+          background: ${this.loading ? "#93C5FD" : isReady ? this.buttonColor : "#9CA3AF"};
+          color: #fff; font-size: 16px; font-weight: 700;
+          cursor: ${isReady && !this.loading ? "pointer" : "not-allowed"};
+          display: flex; align-items: center; justify-content: center; gap: 8px;
+          transition: all 0.2s; opacity: ${isReady ? 1 : 0.6};
         }
-        .pay-btn:hover:not(:disabled) { 
-          opacity: 0.92; 
-          transform: translateY(-1px); 
-        }
-        .pay-btn:disabled {
-          opacity: 0.6;
-          cursor: not-allowed;
-        }
-
+        .pay-btn:hover:not(:disabled) { opacity: 0.92; transform: translateY(-1px); }
+        .pay-btn:disabled { opacity: 0.6; cursor: not-allowed; }
         .secure-badge {
-          display: flex; 
-          align-items: center; 
-          justify-content: center;
-          gap: 6px; 
-          margin-top: 8px; 
-          font-size: 11px; 
-          color: #94A3B8;
+          display: flex; align-items: center; justify-content: center;
+          gap: 6px; margin-top: 8px; font-size: 11px; color: #94A3B8;
         }
-
         .modal-overlay {
-          position: fixed; 
-          inset: 0; 
-          background: rgba(0,0,0,0.5);
-          display: flex; 
-          align-items: center; 
-          justify-content: center; 
-          z-index: 9999;
+          position: fixed; inset: 0; background: rgba(0,0,0,0.5);
+          display: flex; align-items: center; justify-content: center; z-index: 9999;
         }
         .modal {
-          background: #fff; 
-          border-radius: 16px; 
-          padding: 32px;
-          max-width: 440px; 
-          width: 90%; 
-          text-align: center; 
-          position: relative;
+          background: #fff; border-radius: 16px; padding: 32px;
+          max-width: 440px; width: 90%; text-align: center; position: relative;
         }
         .modal-close {
-          position: absolute; 
-          top: 12px; 
-          right: 16px;
-          background: none; 
-          border: none; 
-          font-size: 20px; 
-          cursor: pointer; 
-          color: #64748B;
+          position: absolute; top: 12px; right: 16px;
+          background: none; border: none; font-size: 20px; cursor: pointer; color: #64748B;
         }
-        .modal h2 { 
-          margin: 12px 0 8px; 
-          font-size: 20px; 
-        }
-        .modal p { 
-          color: #64748B; 
-          font-size: 14px; 
-          margin-bottom: 20px; 
-        }
+        .modal h2 { margin: 12px 0 8px; font-size: 20px; }
+        .modal p { color: #64748B; font-size: 14px; margin-bottom: 20px; }
         .modal img {
-          width: 160px; 
-          height: 160px; 
-          border: 1px solid #E2E8F0;
-          border-radius: 8px; 
-          margin: 0 auto 20px; 
-          display: block;
+          width: 160px; height: 160px; border: 1px solid #E2E8F0;
+          border-radius: 8px; margin: 0 auto 20px; display: block;
         }
         .pay-link-btn {
-          display: block; 
-          padding: 14px; 
-          border-radius: 10px;
-          background: ${this.buttonColor}; 
-          color: #fff;
-          font-weight: 700; 
-          font-size: 15px; 
-          text-decoration: none; 
-          margin-bottom: 12px;
+          display: block; padding: 14px; border-radius: 10px;
+          background: ${this.buttonColor}; color: #fff;
+          font-weight: 700; font-size: 15px; text-decoration: none; margin-bottom: 12px;
         }
         .close-btn {
-          width: 100%; 
-          padding: 10px; 
-          border-radius: 10px;
-          border: 1.5px solid #E2E8F0; 
-          background: #fff;
-          cursor: pointer; 
-          font-size: 14px; 
-          color: #64748B;
+          width: 100%; padding: 10px; border-radius: 10px;
+          border: 1.5px solid #E2E8F0; background: #fff;
+          cursor: pointer; font-size: 14px; color: #64748B;
         }
       </style>
 
@@ -459,32 +471,24 @@ class MipsPay extends HTMLElement {
             Veuillez configurer votre clé publique MiPS dans les paramètres du widget.
           </div>
         `
-            : this.loadingCredentials
+            : !isReady && this.loadingCredentials
               ? `
           <div class="info">
             ⏳ Chargement de votre configuration MiPS...<br/>
             <small>Veuillez patienter quelques instants.</small>
           </div>
         `
-              : hasPublicKey
+              : !isReady && this.error
                 ? `
-          <div class="warning">
-            ⚠️ Configuration en attente<br/><br/>
-            Votre clé publique a été enregistrée mais la configuration complète est en cours de chargement.<br/>
-            <small>Si le problème persiste, vérifiez que votre compte MiPS est correctement configuré.</small>
-          </div>
-        `
-                : this.error
-                  ? `
           <div class="error">❌ ${this.error}</div>
         `
-                  : ""
+                : ""
         }
 
-        <button 
-          id="mips-pay-btn" 
-          class="pay-btn" 
-          ${this.loading || !hasPublicKey ? "disabled" : ""}
+        <button
+          id="mips-pay-btn"
+          class="pay-btn"
+          ${this.loading || !isReady ? "disabled" : ""}
         >
           ${this.loading ? "⏳ Traitement..." : `💳 ${this.buttonText} — ${displayAmount}`}
         </button>
@@ -517,9 +521,6 @@ class MipsPay extends HTMLElement {
   }
 }
 
-// Enregistrer le Web Component
 if (!customElements.get("mips-pay")) {
   customElements.define("mips-pay", MipsPay);
 }
-
-// export default MipsPay;

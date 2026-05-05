@@ -32,6 +32,10 @@ interface MipsConfig {
   "request-mode": string;
   "public-key-input": string;
   "amount-source": string;
+  "id-merchant": string;
+  "id-entity": string;
+  "operator-id": string;
+  "operator-password": string;
 }
 
 const CURRENCY_OPTIONS = [
@@ -73,6 +77,10 @@ const Panel: FC = () => {
     "sending-mode": "link",
     "request-mode": "simple",
     "amount-source": "cart",
+    "id-merchant": "",
+    "id-entity": "",
+    "operator-id": "",
+    "operator-password": "",
   });
 
   const [saving, setSaving] = useState(false);
@@ -97,6 +105,10 @@ const Panel: FC = () => {
       "sending-mode",
       "request-mode",
       "amount-source",
+      "id-merchant",
+      "id-entity",
+      "operator-id",
+      "operator-password",
     ];
 
     try {
@@ -140,18 +152,35 @@ const Panel: FC = () => {
   const saveCredentials = useCallback(async (credentials: any) => {
     console.log("💾 Sauvegarde des credentials");
     try {
-      if (credentials.currency)
-        await widget.setProp("currency", credentials.currency);
+      const propsToSave: Record<string, string> = {};
+      if (credentials.currency) propsToSave["currency"] = credentials.currency;
       if (credentials.sending_mode)
-        await widget.setProp("sending-mode", credentials.sending_mode);
+        propsToSave["sending-mode"] = credentials.sending_mode;
       if (credentials.request_mode)
-        await widget.setProp("request-mode", credentials.request_mode);
+        propsToSave["request-mode"] = credentials.request_mode;
+      if (credentials.id_merchant)
+        propsToSave["id-merchant"] = credentials.id_merchant;
+      if (credentials.id_entity)
+        propsToSave["id-entity"] = credentials.id_entity;
+      if (credentials.operator_id)
+        propsToSave["operator-id"] = credentials.operator_id;
+      if (credentials.operator_password)
+        propsToSave["operator-password"] = credentials.operator_password;
+
+      await Promise.all(
+        Object.entries(propsToSave).map(([k, v]) => widget.setProp(k, v)),
+      );
 
       setConfig((prev) => ({
         ...prev,
         currency: credentials.currency || prev.currency,
         "sending-mode": credentials.sending_mode || prev["sending-mode"],
         "request-mode": credentials.request_mode || prev["request-mode"],
+        "id-merchant": credentials.id_merchant || prev["id-merchant"],
+        "id-entity": credentials.id_entity || prev["id-entity"],
+        "operator-id": credentials.operator_id || prev["operator-id"],
+        "operator-password":
+          credentials.operator_password || prev["operator-password"],
       }));
       return true;
     } catch (error) {
@@ -174,10 +203,7 @@ const Panel: FC = () => {
       const data = await res.json();
 
       if (data.valid) {
-        // Sauvegarder la clé publique
         await savePublicKey(publicKey);
-
-        // Sauvegarder les credentials
         if (data.merchant) {
           await saveCredentials(data.merchant);
         }
@@ -229,7 +255,6 @@ const Panel: FC = () => {
     <WixDesignSystemProvider>
       <SidePanel width="300" height="100vh">
         <SidePanel.Content noPadding stretchVertically>
-          {/* ── Configuration de la clé publique ── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
               🔑 Configuration MiPS
