@@ -37,7 +37,7 @@ class MipsPay extends HTMLElement {
   private loadingCredentials = false;
   private credentialsLoaded = false;
 
-  private readonly DEFAULT_FIXED_AMOUNT = 2000;
+  private readonly DEFAULT_FIXED_AMOUNT = 0;
 
   constructor() {
     super();
