@@ -1,5 +1,3 @@
-// panel.tsx - Version corrigée avec meilleure sauvegarde
-
 import React, { type FC, useState, useEffect, useCallback } from "react";
 import { widget } from "@wix/editor";
 import {
@@ -138,19 +136,19 @@ const Panel: FC = () => {
   };
 
   const savePublicKey = useCallback(async (publicKey: string) => {
-    console.log("💾 Sauvegarde automatique de la clé:", publicKey);
+    // console.log("💾 Sauvegarde automatique de la clé:", publicKey);
     try {
       await widget.setProp("public-key", publicKey);
       setConfig((prev) => ({ ...prev, "public-key": publicKey }));
       return true;
     } catch (error) {
-      console.error("Erreur sauvegarde clé:", error);
+      // console.error("Erreur sauvegarde clé:", error);
       return false;
     }
   }, []);
 
   const saveCredentials = useCallback(async (credentials: any) => {
-    console.log("💾 Sauvegarde des credentials");
+    // console.log("💾 Sauvegarde des credentials");
     try {
       const propsToSave: Record<string, string> = {};
       if (credentials.currency) propsToSave["currency"] = credentials.currency;
@@ -184,7 +182,7 @@ const Panel: FC = () => {
       }));
       return true;
     } catch (error) {
-      console.error("Erreur sauvegarde credentials:", error);
+      // console.error("Erreur sauvegarde credentials:", error);
       return false;
     }
   }, []);

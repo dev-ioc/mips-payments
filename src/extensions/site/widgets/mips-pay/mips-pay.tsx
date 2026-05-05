@@ -1,3 +1,5 @@
+// import toast from "react-hot-toast";
+
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
 interface Window {
@@ -45,13 +47,13 @@ class MipsPay extends HTMLElement {
   }
 
   async connectedCallback() {
-    console.log("[MiPS] connectedCallback - Démarrage");
+    // console.log("[MiPS] connectedCallback - Démarrage");
     this.render();
     this.attachEvents();
 
     await new Promise((resolve) => setTimeout(resolve, 500));
 
-    console.log("[MiPS] Clé publique après chargement:", this.publicKey);
+    // console.log("[MiPS] Clé publique après chargement:", this.publicKey);
 
     if (this.publicKey) {
       await this.loadMerchantCredentials(this.publicKey);
@@ -71,7 +73,7 @@ class MipsPay extends HTMLElement {
   }
 
   attributeChangedCallback(name: string, oldValue: string, newValue: string) {
-    console.log(`[MiPS] attributeChanged: ${name} = ${newValue}`);
+    // console.log(`[MiPS] attributeChanged: ${name} = ${newValue}`);
 
     if (name === "public-key" && newValue && newValue !== oldValue) {
       if (!this.credentialsLoaded) {
@@ -83,7 +85,7 @@ class MipsPay extends HTMLElement {
       const parsed = parseFloat(newValue);
       if (!isNaN(parsed) && parsed > 0) {
         this.dynamicAmount = parsed;
-        console.log(`[MiPS] dynamicAmount mis à jour: ${this.dynamicAmount}`);
+        // console.log(`[MiPS] dynamicAmount mis à jour: ${this.dynamicAmount}`);
       }
     }
 
@@ -101,7 +103,7 @@ class MipsPay extends HTMLElement {
         `${BACKEND}/api/merchant/get-credentials?public_key=${encodeURIComponent(publicKey)}`,
       );
       const data = await res.json();
-      console.log("[MiPS] Réponse credentials:", data);
+      // console.log("[MiPS] Réponse credentials:", data);
 
       const m = data?.merchant;
       if (
@@ -120,15 +122,15 @@ class MipsPay extends HTMLElement {
 
         this.credentialsLoaded = true;
         this.loadingCredentials = false;
-        console.log("[MiPS] credentials chargés avec succès");
+        // console.log("[MiPS] credentials chargés avec succès");
         this.render();
         this.attachEvents();
       } else {
-        console.log("[MiPS] Aucun credential trouvé");
+        // console.log("[MiPS] Aucun credential trouvé");
         if (attempt < MAX_ATTEMPTS) {
-          console.log(
-            `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
-          );
+          // console.log(
+          //   // `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
+          // );
           await new Promise((r) => setTimeout(r, 2000));
           return this.loadMerchantCredentials(publicKey, attempt + 1);
         } else {
@@ -140,11 +142,11 @@ class MipsPay extends HTMLElement {
         }
       }
     } catch (err) {
-      console.error("[MiPS] Erreur chargement credentials:", err);
+      // console.error("[MiPS] Erreur chargement credentials:", err);
       if (attempt < MAX_ATTEMPTS) {
-        console.log(
-          `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
-        );
+        // console.log(
+        //   `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
+        // );
         await new Promise((r) => setTimeout(r, 2000));
         return this.loadMerchantCredentials(publicKey, attempt + 1);
       } else {
@@ -217,9 +219,9 @@ class MipsPay extends HTMLElement {
     try {
       // Vérification sécurisée pour éviter les erreurs cross-origin
       if (this.isInCrossOriginFrame()) {
-        console.log(
-          "[MiPS] Exécution dans un frame cross-origin, accès DOM limité",
-        );
+        // console.log(
+        //   "[MiPS] Exécution dans un frame cross-origin, accès DOM limité",
+        // );
         return await this.getCartTotalViaPostMessage();
       }
 
@@ -311,10 +313,10 @@ class MipsPay extends HTMLElement {
       if (amount > 0) return { amount, items: [] };
       return { amount: this.fixedAmount, items: [] };
     } catch (error) {
-      console.error(
-        "[MiPS] Erreur récupération panier via postMessage:",
-        error,
-      );
+      // console.error(
+      //   "[MiPS] Erreur récupération panier via postMessage:",
+      //   error,
+      // );
       return { amount: this.fixedAmount, items: [] };
     }
   }
@@ -367,7 +369,7 @@ class MipsPay extends HTMLElement {
           },
           "*",
         );
-        console.log("[MiPS] Demande de montant panier envoyée");
+        // console.log("[MiPS] Demande de montant panier envoyée");
       } catch (e) {
         this._cartRequestPending = false;
         clearTimeout(timeout);
@@ -495,7 +497,7 @@ class MipsPay extends HTMLElement {
         redirect_url: window.location.href,
       };
 
-      console.log("[MiPS] Envoi de la requête de paiement");
+      // console.log("[MiPS] Envoi de la requête de paiement");
 
       const res = await fetch(`${BACKEND}/api/create-payment`, {
         method: "POST",
@@ -504,7 +506,7 @@ class MipsPay extends HTMLElement {
       });
 
       const data = await res.json();
-      console.log("[MiPS] Réponse backend:", data);
+      // console.log("[MiPS] Réponse backend:", data);
 
       if (data.payment_link) {
         this.paymentLink = data.payment_link;
