@@ -19,7 +19,6 @@ class MipsPay extends HTMLElement {
       "request-mode",
       "amount-source",
       "amount-selector",
-      // ── Nouveaux credentials ──
       "id-merchant",
       "id-entity",
       "operator-id",
@@ -105,7 +104,6 @@ class MipsPay extends HTMLElement {
         m?.operator_id &&
         m?.operator_password
       ) {
-        // Stocker dans les attributs pour que handlePay puisse les lire
         this.setAttribute("id-merchant", m.id_merchant);
         this.setAttribute("id-entity", m.id_entity);
         this.setAttribute("operator-id", m.operator_id);
@@ -116,11 +114,11 @@ class MipsPay extends HTMLElement {
 
         this.credentialsLoaded = true;
         this.loadingCredentials = false;
-        console.log("[MiPS] ✅ Credentials chargés avec succès");
+        console.log("[MiPS] credentials chargés avec succès");
         this.render();
         this.attachEvents();
       } else {
-        console.log("[MiPS] ❌ Aucun credential trouvé");
+        console.log("[MiPS] Aucun credential trouvé");
         if (attempt < MAX_ATTEMPTS) {
           console.log(
             `[MiPS] Tentative ${attempt}/${MAX_ATTEMPTS} dans 2 secondes...`,
@@ -211,6 +209,14 @@ class MipsPay extends HTMLElement {
 
   private async getWixCartTotal(): Promise<{ amount: number; items: any[] }> {
     try {
+      // Vérification sécurisée pour éviter les erreurs cross-origin
+      if (this.isInCrossOriginFrame()) {
+        console.log(
+          "[MiPS] Exécution dans un frame cross-origin, accès DOM limité",
+        );
+        return await this.getCartTotalViaPostMessage();
+      }
+
       if (window.wixEmbedsAPI?.getCurrentCart) {
         const cart = await window.wixEmbedsAPI.getCurrentCart();
         const amount = cart?.totals?.total || cart?.totalPrice || 0;
@@ -226,9 +232,8 @@ class MipsPay extends HTMLElement {
       ];
 
       for (const selector of selectors) {
-        const el =
-          document.querySelector(selector) ||
-          window.parent?.document?.querySelector(selector);
+        // Accès sécurisé à window.parent.document uniquement si autorisé
+        const el = this.getSafeElement(selector);
         if (el) {
           const text = el.textContent || "";
           const amount = parseFloat(text.replace(/[^0-9.]/g, ""));
@@ -254,25 +259,115 @@ class MipsPay extends HTMLElement {
       return { amount: this.fixedAmount, items: [] };
     }
   }
+
+  private isInCrossOriginFrame(): boolean {
+    try {
+      // Tenter d'accéder à window.parent.document pour détecter l'erreur cross-origin
+      return window.parent !== window && !window.parent.document;
+    } catch (e) {
+      // Une erreur se produit en cas de cross-origin
+      return true;
+    }
+  }
+
+  private getSafeElement(selector: string): Element | null {
+    try {
+      // Essayer d'abord le document local
+      const localEl = document.querySelector(selector);
+      if (localEl) return localEl;
+
+      // Tentative sécurisée pour window.parent.document
+      if (window.parent !== window) {
+        try {
+          // Vérifier si on peut accéder au parent document
+          if (window.parent.document) {
+            return window.parent.document.querySelector(selector);
+          }
+        } catch (e) {
+          // Cross-origin - ignorer silencieusement
+          console.debug("[MiPS] Accès parent document refusé:", e);
+        }
+      }
+
+      return null;
+    } catch (error) {
+      console.debug("[MiPS] Erreur accès élément:", error);
+      return null;
+    }
+  }
+
+  private async getCartTotalViaPostMessage(): Promise<{
+    amount: number;
+    items: any[];
+  }> {
+    try {
+      const amount = await this.getAmountViaPostMessage();
+      if (amount > 0) return { amount, items: [] };
+      return { amount: this.fixedAmount, items: [] };
+    } catch (error) {
+      console.error(
+        "[MiPS] Erreur récupération panier via postMessage:",
+        error,
+      );
+      return { amount: this.fixedAmount, items: [] };
+    }
+  }
+
   private getAmountViaPostMessage(): Promise<number> {
     return new Promise((resolve) => {
-      const timeout = setTimeout(() => resolve(0), 2000);
+      let isResolved = false;
+      const timeout = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          cleanup();
+          resolve(0);
+        }
+      }, 3000); // Augmentation du timeout à 3 secondes
 
-      const handler = (event: MessageEvent) => {
-        if (event.data?.type === "wixCart" || event.data?.cartTotal) {
-          clearTimeout(timeout);
+      const cleanup = () => {
+        try {
           window.removeEventListener("message", handler);
-          const amount = event.data.cartTotal || event.data.total || 0;
-          resolve(parseFloat(String(amount)) || 0);
+        } catch (e) {
+          // Ignorer les erreurs de nettoyage
         }
       };
 
-      window.addEventListener("message", handler);
+      const handler = (event: MessageEvent) => {
+        // Vérifier l'origine pour la sécurité (à adapter selon votre configuration)
+        // if (event.origin !== "https://votre-domaine-wix.com") return;
+
+        if (event.data?.type === "wixCart" || event.data?.cartTotal) {
+          if (!isResolved) {
+            isResolved = true;
+            clearTimeout(timeout);
+            cleanup();
+
+            const amount = event.data.cartTotal || event.data.total || 0;
+            const parsedAmount = parseFloat(String(amount)) || 0;
+            console.log("[MiPS] Montant reçu via postMessage:", parsedAmount);
+            resolve(parsedAmount);
+          }
+        }
+      };
 
       try {
-        window.parent.postMessage({ type: "getCartTotal" }, "*");
+        window.addEventListener("message", handler);
+
+        // Envoyer la demande au parent
+        window.parent.postMessage(
+          {
+            type: "getCartTotal",
+            source: "mips-payment",
+            timestamp: Date.now(),
+          },
+          "*",
+        );
+
+        console.log("[MiPS] Demande de montant panier envoyée");
       } catch (e) {
+        console.error("[MiPS] Erreur envoi postMessage:", e);
         clearTimeout(timeout);
+        cleanup();
         resolve(0);
       }
     });
