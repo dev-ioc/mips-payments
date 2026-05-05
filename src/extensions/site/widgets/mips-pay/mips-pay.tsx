@@ -211,37 +211,72 @@ class MipsPay extends HTMLElement {
 
   private async getWixCartTotal(): Promise<{ amount: number; items: any[] }> {
     try {
-      let retries = 0;
-      while (!window.wix && retries < 10) {
-        await new Promise((resolve) => setTimeout(resolve, 500));
-        retries++;
+      if (window.wixEmbedsAPI?.getCurrentCart) {
+        const cart = await window.wixEmbedsAPI.getCurrentCart();
+        const amount = cart?.totals?.total || cart?.totalPrice || 0;
+        if (amount > 0) return { amount, items: cart.items || [] };
       }
-      if (window.wix?.stores) {
-        const cart = await window.wix.stores.getCurrentCart();
-        const amount = cart.totalAmount || cart.totalPrice || 0;
-        return {
-          amount: amount > 0 ? amount : this.DEFAULT_FIXED_AMOUNT,
-          items: cart.items || [],
-        };
+
+      const selectors = [
+        "[data-hook='cart-total']",
+        "[data-hook='order-total']",
+        ".cart-total",
+        ".order-total",
+        "[class*='total']",
+      ];
+
+      for (const selector of selectors) {
+        const el =
+          document.querySelector(selector) ||
+          window.parent?.document?.querySelector(selector);
+        if (el) {
+          const text = el.textContent || "";
+          const amount = parseFloat(text.replace(/[^0-9.]/g, ""));
+          if (!isNaN(amount) && amount > 0) {
+            console.log(
+              "[MiPS] Montant trouvé via DOM:",
+              amount,
+              "selector:",
+              selector,
+            );
+            return { amount, items: [] };
+          }
+        }
       }
-      if (window.Wix?.Utils) {
-        return new Promise((resolve) => {
-          window.Wix.getCurrentCart((cart: any) => {
-            const amount = cart.totalAmount || cart.totalPrice || 0;
-            resolve({
-              amount: amount > 0 ? amount : this.DEFAULT_FIXED_AMOUNT,
-              items: cart.items || [],
-            });
-          });
-        });
-      }
-      return { amount: this.DEFAULT_FIXED_AMOUNT, items: [] };
+
+      const cartAmount = await this.getAmountViaPostMessage();
+      if (cartAmount > 0) return { amount: cartAmount, items: [] };
+
+      console.log("[MiPS] Aucun montant trouvé, utilisation du montant fixe");
+      return { amount: this.fixedAmount, items: [] };
     } catch (error) {
       console.error("Erreur panier Wix:", error);
-      return { amount: this.DEFAULT_FIXED_AMOUNT, items: [] };
+      return { amount: this.fixedAmount, items: [] };
     }
   }
+  private getAmountViaPostMessage(): Promise<number> {
+    return new Promise((resolve) => {
+      const timeout = setTimeout(() => resolve(0), 2000);
 
+      const handler = (event: MessageEvent) => {
+        if (event.data?.type === "wixCart" || event.data?.cartTotal) {
+          clearTimeout(timeout);
+          window.removeEventListener("message", handler);
+          const amount = event.data.cartTotal || event.data.total || 0;
+          resolve(parseFloat(String(amount)) || 0);
+        }
+      };
+
+      window.addEventListener("message", handler);
+
+      try {
+        window.parent.postMessage({ type: "getCartTotal" }, "*");
+      } catch (e) {
+        clearTimeout(timeout);
+        resolve(0);
+      }
+    });
+  }
   private getAmountFromSelector(): number {
     if (!this.amountSelector) return this.DEFAULT_FIXED_AMOUNT;
     try {
