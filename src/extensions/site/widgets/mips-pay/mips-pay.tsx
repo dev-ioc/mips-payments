@@ -74,17 +74,16 @@ class MipsPay extends HTMLElement {
     console.log(`[MiPS] attributeChanged: ${name} = ${newValue}`);
 
     if (name === "public-key" && newValue && newValue !== oldValue) {
-      console.log(
-        "[MiPS] Clé publique reçue",
-        newValue.substring(0, 20) + "...",
-      );
-      // Charger les credentials dès que la clé arrive
       if (!this.credentialsLoaded) {
-        console.log(
-          "[MiPS] Chargement des credentials pour:",
-          newValue.substring(0, 20) + "...",
-        );
         this.loadMerchantCredentials(newValue);
+      }
+    }
+
+    if (name === "amount" && newValue) {
+      const parsed = parseFloat(newValue);
+      if (!isNaN(parsed) && parsed > 0) {
+        this.dynamicAmount = parsed;
+        console.log(`[MiPS] dynamicAmount mis à jour: ${this.dynamicAmount}`);
       }
     }
 
