@@ -8,7 +8,6 @@ import { Loader2 } from "lucide-react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Button } from "./ui/button";
 
-// Utilisez la même URL que votre backend MiPS
 const BACKEND = "https://mips-wix-backend.onrender.com";
 
 const schema = z.object({
@@ -34,7 +33,7 @@ const Login = () => {
     try {
       setErrorMsg("");
 
-      console.log("Tentative de connexion à:", `${BACKEND}/api/login`);
+      // console.log("Tentative de connexion à:", `${BACKEND}/api/login`);
 
       const res = await fetch(`${BACKEND}/api/login`, {
         method: "POST",
@@ -217,7 +216,7 @@ const Login = () => {
               </Button>
             </div>
           </form>
-          <div className="mt-5 text-center">
+          {/* <div className="mt-5 text-center">
             <span className="text-sm text-slate-400">
               Mot de passe oublié ?{" "}
             </span>
@@ -227,7 +226,7 @@ const Login = () => {
             >
               Cliquez ici
             </button>
-          </div>
+          </div> */}
         </div>
       </div>
     </div>

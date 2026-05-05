@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-// import { dashboard } from "@wix/dashboard";
 import {
   Loader2,
   Key,
@@ -106,13 +105,13 @@ const CredentialsPage = () => {
       const payload = JSON.parse(
         atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
       );
-      console.log("📦 Instance payload:", payload);
+      // console.log("Instance payload:", payload);
 
       return (
         payload.metaSiteId || payload.siteOwnerId || payload.instanceId || ""
       );
     } catch (e) {
-      console.warn("Décodage instance échoué:", e);
+      // console.warn("Décodage instance échoué:", e);
       return "";
     }
   }
@@ -120,7 +119,7 @@ const CredentialsPage = () => {
   function getSiteId(): string {
     const fromInstance = getSiteIdFromInstance();
     if (fromInstance) {
-      console.log("✅ Site ID via instance JWT:", fromInstance);
+      // console.log("Site ID via instance JWT:", fromInstance);
       return fromInstance;
     }
 
@@ -128,7 +127,7 @@ const CredentialsPage = () => {
       /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
     );
     if (pathMatch) {
-      console.log("✅ Site ID via pathname:", pathMatch[1]);
+      // console.log("Site ID via pathname:", pathMatch[1]);
       return pathMatch[1];
     }
 
@@ -138,7 +137,7 @@ const CredentialsPage = () => {
       params.get("metaSiteId") ||
       params.get("siteId");
     if (id) {
-      console.log("✅ Site ID via query param:", id);
+      // console.log("Site ID via query param:", id);
       return id;
     }
 
@@ -149,19 +148,19 @@ const CredentialsPage = () => {
           /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
         );
         if (refPathMatch) {
-          console.log("✅ Site ID via referrer path:", refPathMatch[1]);
+          // console.log("Site ID via referrer path:", refPathMatch[1]);
           return refPathMatch[1];
         }
         const refParams = new URLSearchParams(refUrl.search);
         const refId = refParams.get("tenantId") || refParams.get("metaSiteId");
         if (refId) {
-          console.log("✅ Site ID via referrer params:", refId);
+          // console.log("Site ID via referrer params:", refId);
           return refId;
         }
       } catch (e) {}
     }
 
-    console.error("❌ Site ID introuvable");
+    // console.error("Site ID introuvable");
     return "";
   }
 
@@ -184,13 +183,13 @@ const CredentialsPage = () => {
       if (typeof window !== "undefined" && window.Wix) {
         const token = await window.Wix.getAuthToken();
         if (token) {
-          console.log("✅ Token récupéré via Wix SDK");
+          // console.log("Token récupéré via Wix SDK");
           return token;
         }
       }
       if (import.meta.env.DEV) {
         console.warn(
-          "⚠️ Mode développement: utilisation d'un token temporaire",
+          // "Mode développement: utilisation d'un token temporaire",
         );
         return "dev-token-temp";
       }
@@ -247,7 +246,7 @@ const CredentialsPage = () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
-      console.log("📦 Credentials chargés:", data);
+      // console.log("Credentials chargés:", data);
 
       if (data.configured && data.merchant) {
         setForm({
@@ -339,7 +338,7 @@ const CredentialsPage = () => {
           setGeneratedPublicKey(data.public_key);
           setExistingPublicKey(data.public_key);
           toast.success(
-            `✅ Credentials sauvegardés ! Votre clé publique a été générée.`,
+            `Credentials sauvegardés ! Votre clé publique a été générée.`,
             { duration: 5000 },
           );
         } else {
@@ -434,26 +433,6 @@ const CredentialsPage = () => {
                 </div>
               </div>
             </div>
-            {/* <div className="mt-4 flex gap-3"> */}
-            {/* <button
-                onClick={() =>
-                  copyToClipboard(generatedPublicKey || existingPublicKey)
-                }
-                className="px-4 py-2 text-[13px] font-semibold bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
-              >
-                <Copy size={14} />
-                Copier la clé
-              </button> */}
-            {/* <button
-                onClick={() => {
-                  window.open("https://editor.wix.com", "_blank");
-                }}
-                className="px-4 py-2 text-[13px] font-semibold border border-blue-300 text-blue-700 rounded-lg hover:bg-blue-50 transition-colors flex items-center gap-2"
-              >
-                <ExternalLink size={14} />
-                Ajouter le widget
-              </button> */}
-            {/* </div> */}
           </div>
         )}
 
@@ -581,7 +560,7 @@ const CredentialsPage = () => {
         {/* Instructions */}
         <div className="bg-gray-50 rounded-2xl border border-gray-200 p-6">
           <h3 className="text-[14px] font-semibold text-gray-900 mb-3">
-            📖 Comment utiliser votre clé publique ?
+            Comment utiliser votre clé publique ?
           </h3>
           <ol className="space-y-2 text-[13px] text-gray-600">
             <li className="flex gap-2">

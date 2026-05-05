@@ -66,13 +66,6 @@ export default function Dashboard() {
       p.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
-  // if (loading)
-  //   return (
-  //     <div className="fixed inset-0 bg-black/30 z-50 flex items-center justify-center">
-  //       <Loader2 className="w-12 h-12 text-primary animate-spin" />
-  //     </div>
-  //   );
-
   return (
     <div className="container p-6 space-y-6 mx-auto h-screen">
       <div className="flex justify-between">
