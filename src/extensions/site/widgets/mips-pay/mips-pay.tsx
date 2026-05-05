@@ -313,47 +313,46 @@ class MipsPay extends HTMLElement {
     }
   }
 
+  private _cartRequestPending = false;
+
   private getAmountViaPostMessage(): Promise<number> {
+    if (this._cartRequestPending) {
+      return Promise.resolve(0);
+    }
+    this._cartRequestPending = true;
+
     return new Promise((resolve) => {
       let isResolved = false;
       const timeout = setTimeout(() => {
         if (!isResolved) {
           isResolved = true;
+          this._cartRequestPending = false;
           cleanup();
           resolve(0);
         }
-      }, 3000); // Augmentation du timeout à 3 secondes
+      }, 3000);
 
       const cleanup = () => {
         try {
           window.removeEventListener("message", handler);
-        } catch (e) {
-          // Ignorer les erreurs de nettoyage
-        }
+        } catch (e) {}
       };
 
       const handler = (event: MessageEvent) => {
-        // Vérifier l'origine pour la sécurité (à adapter selon votre configuration)
-        // if (event.origin !== "https://votre-domaine-wix.com") return;
-
         if (event.data?.type === "wixCart" || event.data?.cartTotal) {
           if (!isResolved) {
             isResolved = true;
+            this._cartRequestPending = false;
             clearTimeout(timeout);
             cleanup();
-
             const amount = event.data.cartTotal || event.data.total || 0;
-            const parsedAmount = parseFloat(String(amount)) || 0;
-            console.log("[MiPS] Montant reçu via postMessage:", parsedAmount);
-            resolve(parsedAmount);
+            resolve(parseFloat(String(amount)) || 0);
           }
         }
       };
 
       try {
         window.addEventListener("message", handler);
-
-        // Envoyer la demande au parent
         window.parent.postMessage(
           {
             type: "getCartTotal",
@@ -362,10 +361,9 @@ class MipsPay extends HTMLElement {
           },
           "*",
         );
-
         console.log("[MiPS] Demande de montant panier envoyée");
       } catch (e) {
-        console.error("[MiPS] Erreur envoi postMessage:", e);
+        this._cartRequestPending = false;
         clearTimeout(timeout);
         cleanup();
         resolve(0);
@@ -419,17 +417,18 @@ class MipsPay extends HTMLElement {
         await this.updateDynamicAmount();
       }
     });
-    if (this.amountSource === "cart" || this.amountSource === "selector") {
-      const observer = new MutationObserver(async () => {
-        await this.updateDynamicAmount();
-      });
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["data-total", "data-cart-total"],
-      });
-      setInterval(() => this.updateDynamicAmount(), 5000);
+    if (!this.isInCrossOriginFrame()) {
+      if (this.amountSource === "cart" || this.amountSource === "selector") {
+        const observer = new MutationObserver(async () => {
+          await this.updateDynamicAmount();
+        });
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ["data-total", "data-cart-total"],
+        });
+      }
     }
   }
 
