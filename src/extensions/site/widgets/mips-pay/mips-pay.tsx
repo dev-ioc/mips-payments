@@ -59,7 +59,14 @@ class MipsPay extends HTMLElement {
       console.log("[MiPS] Pas de clé publique");
     }
 
-    await this.updateDynamicAmount();
+    if (this.amountSource !== "cart" || !this.isInCrossOriginFrame()) {
+      await this.updateDynamicAmount();
+    } else {
+      this.dynamicAmount = this.fixedAmount;
+      this.render();
+      this.attachEvents();
+    }
+
     this.listenToCartChanges();
   }
 
