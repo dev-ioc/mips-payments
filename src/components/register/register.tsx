@@ -84,7 +84,7 @@ const Register = () => {
               en quelques minutes
             </h1>
             <p className="text-sm text-white/60 leading-relaxed max-w-[260px]">
-              Renseignez vos credentials MiPS dans les formulaires à droite.
+              Renseignez les formulaires à droite.
             </p>
           </div>
           <div className="relative">
