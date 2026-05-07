@@ -249,7 +249,7 @@ const CredentialsPage = () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
-      // console.log("Credentials chargés:", data);
+      console.log("Credentials chargés:", data);
 
       if (data.configured && data.merchant) {
         setForm({
@@ -515,13 +515,6 @@ const CredentialsPage = () => {
                 onChange={(v) => update("auth_basic_password", v)}
                 type="password"
                 error={errors.auth_basic_password}
-              />
-              <FormField
-                label="Mot de passe Opérateur"
-                value={form.operator_password}
-                onChange={(v) => update("operator_password", v)}
-                type="password"
-                error={errors.operator_password}
               />
               <div className="flex flex-col gap-1.5">
                 <label className="text-[12px] font-semibold text-gray-600">
