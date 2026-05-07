@@ -80,6 +80,8 @@ const CredentialsPage = () => {
     currency: "MUR",
     request_mode: "simple",
     sending_mode: "link",
+    auth_basic_username: "",
+    auth_basic_password: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -188,9 +190,10 @@ const CredentialsPage = () => {
         }
       }
       if (import.meta.env.DEV) {
-        console.warn(
+        console
+          .warn
           // "Mode développement: utilisation d'un token temporaire",
-        );
+          ();
         return "dev-token-temp";
       }
 
@@ -257,6 +260,8 @@ const CredentialsPage = () => {
           currency: data.merchant.currency || "MUR",
           request_mode: data.merchant.request_mode || "simple",
           sending_mode: data.merchant.sending_mode || "link",
+          auth_basic_username: data.merchant.auth_basic_username || "",
+          auth_basic_password: data.merchant.auth_basic_password || "",
         });
         setEditing(true);
 
@@ -488,6 +493,28 @@ const CredentialsPage = () => {
                 onChange={(v) => update("id_operator", v)}
                 error={errors.id_operator}
                 type="password"
+              />
+              <FormField
+                label="Mot de passe Opérateur"
+                value={form.operator_password}
+                onChange={(v) => update("operator_password", v)}
+                type="password"
+                error={errors.operator_password}
+              />
+              <FormField
+                label="Nom d’utilisateur MIPS"
+                value={form.auth_basic_username}
+                onChange={(v) => update("auth_basic_username", v)}
+                error={errors.auth_basic_username}
+                type="password"
+              />
+
+              <FormField
+                label="Mot de passe MIPS"
+                value={form.auth_basic_password}
+                onChange={(v) => update("auth_basic_password", v)}
+                type="password"
+                error={errors.auth_basic_password}
               />
               <FormField
                 label="Mot de passe Opérateur"
