@@ -76,6 +76,7 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachEvents();
   }
+
   private get publicKey() {
     return this.getAttribute("public-key") || "";
   }
@@ -165,7 +166,8 @@ class MipsPay extends HTMLElement {
         return this.loadMerchantCredentials(publicKey, attempt + 1);
       } else {
         this.loadingCredentials = false;
-        this.error = "Erreur réseau: impossible de joindre le serveur MiPS.";
+        this.error =
+          "Erreur r\u00e9seau: impossible de joindre le serveur MiPS.";
         this.render();
         this.attachEvents();
       }
@@ -451,7 +453,6 @@ class MipsPay extends HTMLElement {
       this.attachEvents();
       return;
     }
-    // ✅ Afficher le formulaire client
     this.showCustomerForm = true;
     this.customerFormErrors = [];
     this.render();
@@ -464,7 +465,7 @@ class MipsPay extends HTMLElement {
       errors.push("Le pr\u00e9nom est requis");
     if (!this.customerInfo.lastName.trim()) errors.push("Le nom est requis");
     if (!this.customerInfo.phone.trim())
-      errors.push("Le pr\u00e9nom est requis");
+      errors.push("Le t\u00e9l\u00e9phone est requis"); // ✅ Bug corrigé
     else if (!/^[0-9\s\+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
       errors.push("Num\u00e9ro de t\u00e9l\u00e9phone invalide");
 
@@ -513,6 +514,7 @@ class MipsPay extends HTMLElement {
         this.showIframe = true;
         this.error = "";
       } else if (data.payment_link) {
+        // Fallback : lien externe si pas d'iframe disponible
         this.paymentId = data.payment_id || "";
         window.open(data.payment_link, "_blank");
         this.error = "";
@@ -521,7 +523,7 @@ class MipsPay extends HTMLElement {
           data.error || "Erreur lors de la cr\u00e9ation du paiement.";
       }
     } catch (err: unknown) {
-      this.error = `Erreur: ${err instanceof Error ? err.message : "Erreur réseau"}`;
+      this.error = `Erreur: ${err instanceof Error ? err.message : "Erreur r\u00e9seau"}`;
     }
 
     this.loading = false;
@@ -537,10 +539,10 @@ class MipsPay extends HTMLElement {
       <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;
         align-items:center;justify-content:center;z-index:9999;">
         <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;">
-          <div style="font-size:48px">✅</div>
-          <h2 style="margin:12px 0 8px">Paiement réussi !</h2>
-          <p style="color:#64748B">Votre paiement de ${this.getDisplayAmount()} a été traité avec succès.</p>
-          <p style="font-size:12px;color:#94A3B8">Référence : ${this.paymentId}</p>
+          <div style="font-size:48px;margin-bottom:8px">&#10003;</div>
+          <h2 style="margin:12px 0 8px">Paiement r\u00e9ussi !</h2>
+          <p style="color:#64748B">Votre paiement de ${this.getDisplayAmount()} a \u00e9t\u00e9 trait\u00e9 avec succ\u00e8s.</p>
+          <p style="font-size:12px;color:#94A3B8">R\u00e9f\u00e9rence : ${this.paymentId}</p>
         </div>
       </div>
     `;
@@ -548,7 +550,7 @@ class MipsPay extends HTMLElement {
 
   private handlePaymentFailed() {
     this.showIframe = false;
-    this.error = "Le paiement a échoué. Veuillez réessayer.";
+    this.error = "Le paiement a \u00e9chou\u00e9. Veuillez r\u00e9essayer.";
     this.render();
     this.attachEvents();
   }
@@ -567,7 +569,7 @@ class MipsPay extends HTMLElement {
 
     this.shadow.innerHTML = `
       <style>
-        * { box-sizing: border-box; font-family: system-ui, -apple-system, Inter, sans-serif; }
+        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
         .container { max-width: 400px; width: 100%; }
         .error { color:#DC2626; font-size:13px; margin-bottom:8px; padding:12px; background:#FEE2E2; border-radius:6px; text-align:center; }
         .info  { color:#3B82F6; font-size:13px; margin-bottom:8px; padding:12px; background:#DBEAFE; border-radius:6px; text-align:center; }
@@ -581,8 +583,6 @@ class MipsPay extends HTMLElement {
         }
         .pay-btn:hover:not(:disabled) { opacity:0.92; transform:translateY(-1px); }
         .secure-badge { display:flex; align-items:center; justify-content:center; gap:6px; margin-top:8px; font-size:11px; color:#94A3B8; }
-
-        /* ✅ Overlay formulaire client */
         .overlay {
           position:fixed; inset:0; background:rgba(0,0,0,0.5);
           display:flex; align-items:center; justify-content:center; z-index:9999;
@@ -623,8 +623,6 @@ class MipsPay extends HTMLElement {
           border:1.5px solid #E2E8F0; background:#fff;
           cursor:pointer; font-size:14px; color:#64748B;
         }
-
-        /* ✅ Overlay iframe paiement in-site */
         .iframe-overlay {
           position:fixed; inset:0; background:rgba(0,0,0,0.6);
           display:flex; align-items:center; justify-content:center; z-index:9999;
@@ -649,14 +647,14 @@ class MipsPay extends HTMLElement {
       </style>
 
       <div class="container">
-        ${!hasPublicKey ? `<div class="error">⚠️ Clé publique MiPS manquante.</div>` : ""}
-        ${!isReady && this.loadingCredentials ? `<div class="info">⏳ Chargement configuration MiPS...</div>` : ""}
-        ${this.error ? `<div class="error">❌ ${this.error}</div>` : ""}
+        ${!hasPublicKey ? `<div class="error">[!] Cl\u00e9 publique MiPS manquante.</div>` : ""}
+        ${!isReady && this.loadingCredentials ? `<div class="info">Chargement configuration MiPS...</div>` : ""}
+        ${this.error ? `<div class="error">[X] ${this.error}</div>` : ""}
 
         <button id="mips-pay-btn" class="pay-btn" ${this.loading || !isReady ? "disabled" : ""}>
-          ${this.loading ? "⏳ Préparation du paiement..." : `💳 ${this.buttonText} — ${displayAmount}`}
+          ${this.loading ? "Traitement..." : `${this.buttonText} \u2014 ${displayAmount}`}
         </button>
-        <div class="secure-badge">Paiement sécurisé via <strong>MiPS</strong></div>
+        <div class="secure-badge">Paiement s\u00e9curis\u00e9 via <strong>MiPS</strong></div>
       </div>
 
       ${
@@ -664,8 +662,7 @@ class MipsPay extends HTMLElement {
           ? `
         <div class="overlay">
           <div class="modal">
-            <button id="mips-cancel-form" class="modal-close">✕</button>
-            <div style="font-size:36px;text-align:center;margin-bottom:8px">💳</div>
+            <button id="mips-cancel-form" class="modal-close">X</button>
             <h2>Vos informations</h2>
             <p class="subtitle">Requis pour finaliser votre paiement</p>
 
@@ -677,7 +674,7 @@ class MipsPay extends HTMLElement {
               this.customerFormErrors.length > 0
                 ? `
               <div class="form-errors">
-                ${this.customerFormErrors.map((e) => `<p>⚠️ ${e}</p>`).join("")}
+                ${this.customerFormErrors.map((e) => `<p>[!] ${e}</p>`).join("")}
               </div>
             `
                 : ""
@@ -685,7 +682,7 @@ class MipsPay extends HTMLElement {
 
             <div class="form-row">
               <div class="form-group">
-                <label>Prénom *</label>
+                <label>Pr\u00e9nom *</label>
                 <input id="mips-firstname" type="text" placeholder="Jean" />
               </div>
               <div class="form-group">
@@ -694,7 +691,7 @@ class MipsPay extends HTMLElement {
               </div>
             </div>
             <div class="form-group">
-              <label>Téléphone *</label>
+              <label>T\u00e9l\u00e9phone *</label>
               <input id="mips-phone" type="tel" placeholder="+230 5xxx xxxx" />
             </div>
             <div class="form-group">
@@ -703,7 +700,7 @@ class MipsPay extends HTMLElement {
             </div>
 
             <button id="mips-confirm-pay" class="confirm-btn">
-              💳 Procéder au paiement — ${displayAmount}
+              Proc\u00e9der au paiement \u2014 ${displayAmount}
             </button>
             <button id="mips-cancel-form" class="cancel-btn">Annuler</button>
           </div>
@@ -711,14 +708,15 @@ class MipsPay extends HTMLElement {
       `
           : ""
       }
+
       ${
         this.showIframe
           ? `
         <div class="iframe-overlay">
           <div class="iframe-container">
             <div class="iframe-header">
-              <span>🔒 Paiement sécurisé MiPS — ${displayAmount}</span>
-              <button id="mips-iframe-close" class="iframe-close" title="Fermer">✕</button>
+              <span>Paiement s\u00e9curis\u00e9 MiPS \u2014 ${displayAmount}</span>
+              <button id="mips-iframe-close" class="iframe-close" title="Fermer">X</button>
             </div>
             <div class="iframe-body">
               ${
