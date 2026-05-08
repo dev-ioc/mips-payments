@@ -41,7 +41,7 @@ const CURRENCY_OPTIONS = [
   { id: "USD", value: "USD — Dollar américain" },
   { id: "EUR", value: "EUR — Euro" },
   { id: "GBP", value: "GBP — Livre sterling" },
-  { id: "ZAR", value: "ZAR — Rand sud-africain" },
+  { id: "MGA", value: "MGA — Ariary malgache" },
 ];
 
 const SENDING_MODE_OPTIONS = [
@@ -126,7 +126,6 @@ const Panel: FC = () => {
         "public-key-input": loaded["public-key"] || prev["public-key-input"],
       }));
 
-      // Si on a une clé publique, vérifier automatiquement
       if (loaded["public-key"]) {
         verifyPublicKey(loaded["public-key"]);
       }
@@ -136,7 +135,6 @@ const Panel: FC = () => {
   };
 
   const savePublicKey = useCallback(async (publicKey: string) => {
-    // console.log("💾 Sauvegarde automatique de la clé:", publicKey);
     try {
       await widget.setProp("public-key", publicKey);
       setConfig((prev) => ({ ...prev, "public-key": publicKey }));

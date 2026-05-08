@@ -514,7 +514,6 @@ class MipsPay extends HTMLElement {
         this.showIframe = true;
         this.error = "";
       } else if (data.payment_link) {
-        // Fallback : lien externe si pas d'iframe disponible
         this.paymentId = data.payment_id || "";
         window.open(data.payment_link, "_blank");
         this.error = "";
@@ -702,7 +701,6 @@ class MipsPay extends HTMLElement {
             <button id="mips-confirm-pay" class="confirm-btn">
               Proc\u00e9der au paiement \u2014 ${displayAmount}
             </button>
-            <button id="mips-cancel-form" class="cancel-btn">Annuler</button>
           </div>
         </div>
       `

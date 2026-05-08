@@ -35,7 +35,7 @@ const currencyLabels: Record<string, string> = {
   USD: "USD — Dollar américain",
   EUR: "EUR — Euro",
   GBP: "GBP — Livre sterling",
-  ZAR: "ZAR — Rand sud-africain",
+  MGA: "MGA — Ariary malgache",
 };
 
 const requestSendingLables: Record<string, string> = {
