@@ -140,13 +140,11 @@ const Panel: FC = () => {
       setConfig((prev) => ({ ...prev, "public-key": publicKey }));
       return true;
     } catch (error) {
-      // console.error("Erreur sauvegarde clé:", error);
       return false;
     }
   }, []);
 
   const saveCredentials = useCallback(async (credentials: any) => {
-    // console.log("💾 Sauvegarde des credentials");
     try {
       const propsToSave: Record<string, string> = {};
       if (credentials.currency) propsToSave["currency"] = credentials.currency;
@@ -180,7 +178,6 @@ const Panel: FC = () => {
       }));
       return true;
     } catch (error) {
-      // console.error("Erreur sauvegarde credentials:", error);
       return false;
     }
   }, []);
@@ -253,7 +250,7 @@ const Panel: FC = () => {
         <SidePanel.Content noPadding stretchVertically>
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              🔑 Configuration MiPS
+              Configuration MiPS
             </Text>
           </SidePanel.Field>
 
@@ -291,7 +288,7 @@ const Panel: FC = () => {
           {verifying && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="success">
-                ⏳ Vérification en cours...
+                Vérification en cours...
               </SectionHelper>
             </SidePanel.Field>
           )}
@@ -315,7 +312,7 @@ const Panel: FC = () => {
           {config["public-key"] && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="success">
-                🔑 Clé active : {config["public-key"].substring(0, 25)}...
+                Clé active : {config["public-key"].substring(0, 25)}...
               </SectionHelper>
             </SidePanel.Field>
           )}
@@ -324,7 +321,7 @@ const Panel: FC = () => {
 
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              🎨 Apparence
+              Apparence
             </Text>
           </SidePanel.Field>
 
@@ -353,7 +350,7 @@ const Panel: FC = () => {
 
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              💰 Paiement
+              Paiement
             </Text>
           </SidePanel.Field>
 
@@ -408,7 +405,7 @@ const Panel: FC = () => {
 
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              📤 Mode MiPS
+              Mode MiPS
             </Text>
           </SidePanel.Field>
 
@@ -454,11 +451,10 @@ const Panel: FC = () => {
 
         <SidePanel.Footer noPadding>
           <SectionHelper fullWidth appearance="warning" border="topBottom">
-            🔒 Vos credentials MiPS sont stockés de façon sécurisée dans la base
-            de données.
+            Vos credentials MiPS sont stockés de façon sécurisée dans la base de
+            données.
             <br />
-            📌 La clé publique est automatiquement sauvegardée après
-            vérification.
+            La clé publique est automatiquement sauvegardée après vérification.
           </SectionHelper>
         </SidePanel.Footer>
       </SidePanel>

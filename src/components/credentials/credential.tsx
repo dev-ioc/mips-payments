@@ -1,13 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  Loader2,
-  Key,
-  CheckCircle,
-  Copy,
-  Eye,
-  EyeOff,
-  ExternalLink,
-} from "lucide-react";
+import { Loader2, Key, CheckCircle, Copy, Eye, EyeOff } from "lucide-react";
 import toast, { Toaster } from "react-hot-toast";
 
 declare global {
@@ -306,7 +298,7 @@ const CredentialsPage = () => {
       if (token && token !== "dev-token-temp") {
         headers["Authorization"] = `Bearer ${token}`;
       } else {
-        console.warn("⚠️ Pas de token d'authentification disponible");
+        console.warn("Pas de token d'authentification disponible");
       }
 
       const response = await fetch(`${BACKEND}/api/merchant/save-credentials`, {
