@@ -82,6 +82,8 @@ const CredentialsPage = () => {
     sending_mode: "link",
     auth_basic_username: "",
     auth_basic_password: "",
+    imn_salt: "",
+    imn_cipher_key: "",
   });
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -107,13 +109,10 @@ const CredentialsPage = () => {
       const payload = JSON.parse(
         atob(parts[1].replace(/-/g, "+").replace(/_/g, "/")),
       );
-      // console.log("Instance payload:", payload);
-
       return (
         payload.metaSiteId || payload.siteOwnerId || payload.instanceId || ""
       );
     } catch (e) {
-      // console.warn("Décodage instance échoué:", e);
       return "";
     }
   }
@@ -121,7 +120,6 @@ const CredentialsPage = () => {
   function getSiteId(): string {
     const fromInstance = getSiteIdFromInstance();
     if (fromInstance) {
-      // console.log("Site ID via instance JWT:", fromInstance);
       return fromInstance;
     }
 
@@ -129,7 +127,6 @@ const CredentialsPage = () => {
       /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
     );
     if (pathMatch) {
-      // console.log("Site ID via pathname:", pathMatch[1]);
       return pathMatch[1];
     }
 
@@ -139,7 +136,6 @@ const CredentialsPage = () => {
       params.get("metaSiteId") ||
       params.get("siteId");
     if (id) {
-      // console.log("Site ID via query param:", id);
       return id;
     }
 
@@ -150,19 +146,15 @@ const CredentialsPage = () => {
           /\/dashboard\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})/,
         );
         if (refPathMatch) {
-          // console.log("Site ID via referrer path:", refPathMatch[1]);
           return refPathMatch[1];
         }
         const refParams = new URLSearchParams(refUrl.search);
         const refId = refParams.get("tenantId") || refParams.get("metaSiteId");
         if (refId) {
-          // console.log("Site ID via referrer params:", refId);
           return refId;
         }
       } catch (e) {}
     }
-
-    // console.error("Site ID introuvable");
     return "";
   }
 
@@ -185,15 +177,11 @@ const CredentialsPage = () => {
       if (typeof window !== "undefined" && window.Wix) {
         const token = await window.Wix.getAuthToken();
         if (token) {
-          // console.log("Token récupéré via Wix SDK");
           return token;
         }
       }
       if (import.meta.env.DEV) {
-        console
-          .warn
-          // "Mode développement: utilisation d'un token temporaire",
-          ();
+        console.warn();
         return "dev-token-temp";
       }
 
@@ -262,10 +250,11 @@ const CredentialsPage = () => {
           sending_mode: data.merchant.sending_mode || "link",
           auth_basic_username: data.merchant.auth_basic_username || "",
           auth_basic_password: data.merchant.auth_basic_password || "",
+          imn_salt: data.merchant.imn_salt || "",
+          imn_cipher_key: data.merchant.imn_cipher_key || "",
         });
         setEditing(true);
 
-        // Charger la clé publique existante
         if (data.merchant.public_key) {
           setExistingPublicKey(data.merchant.public_key);
           setGeneratedPublicKey(data.merchant.public_key);
@@ -292,6 +281,10 @@ const CredentialsPage = () => {
       newErrors.id_operator = "L'ID Operator est requis";
     if (!form.operator_password.trim() && !editing)
       newErrors.operator_password = "Le mot de passe est requis";
+    if (!form.imn_salt.trim() && !editing)
+      newErrors.imn_salt = "Le salt est requis";
+    if (!form.imn_cipher_key.trim() && !editing)
+      newErrors.imn_cipher_key = "La clé de chiffrement est requise";
 
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
@@ -338,7 +331,6 @@ const CredentialsPage = () => {
       const data = await response.json();
 
       if (data.success) {
-        // Afficher la clé publique si elle est retournée
         if (data.public_key) {
           setGeneratedPublicKey(data.public_key);
           setExistingPublicKey(data.public_key);
@@ -397,8 +389,6 @@ const CredentialsPage = () => {
             </p>
           </div>
         </div>
-
-        {/* Section Clé Publique */}
         {(generatedPublicKey || existingPublicKey) && (
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-6">
             <div className="flex items-center gap-2 mb-3">
@@ -500,6 +490,20 @@ const CredentialsPage = () => {
                 onChange={(v) => update("operator_password", v)}
                 type="password"
                 error={errors.operator_password}
+              />
+              <FormField
+                label="Salt MiPS"
+                value={form.imn_salt}
+                onChange={(v) => update("imn_salt", v)}
+                error={errors.imn_salt}
+                type="password"
+              />
+              <FormField
+                label="Clé de chiffrement MiPS"
+                value={form.imn_cipher_key}
+                onChange={(v) => update("imn_cipher_key", v)}
+                error={errors.imn_cipher_key}
+                type="password"
               />
               <FormField
                 label="Nom d’utilisateur MIPS"
