@@ -440,7 +440,7 @@ class MipsPay extends HTMLElement {
   private handlePay() {
     if (!this.credentialsLoaded || !this.idMerchant) {
       this.error =
-        "Configuration MiPS non chargée. Patientez ou rechargez la page.";
+        "Configuration MiPS non charg\u00e9e. Patientez ou rechargez la page.";
       this.render();
       this.attachEvents();
       return;
@@ -461,11 +461,12 @@ class MipsPay extends HTMLElement {
   private async processPayment() {
     const errors: string[] = [];
     if (!this.customerInfo.firstName.trim())
-      errors.push("Le prénom est requis");
+      errors.push("Le pr\u00e9nom est requis");
     if (!this.customerInfo.lastName.trim()) errors.push("Le nom est requis");
-    if (!this.customerInfo.phone.trim()) errors.push("Le téléphone est requis");
+    if (!this.customerInfo.phone.trim())
+      errors.push("Le pr\u00e9nom est requis");
     else if (!/^[0-9\s\+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
-      errors.push("Numéro de téléphone invalide");
+      errors.push("Num\u00e9ro de t\u00e9l\u00e9phone invalide");
 
     if (errors.length > 0) {
       this.customerFormErrors = errors;
