@@ -512,8 +512,13 @@ class MipsPay extends HTMLElement {
         this.paymentId = data.payment_id || "";
         this.showIframe = true;
         this.error = "";
+      } else if (data.payment_link) {
+        this.paymentId = data.payment_id || "";
+        window.open(data.payment_link, "_blank");
+        this.error = "";
       } else {
-        this.error = data.error || "Erreur lors de la création du paiement.";
+        this.error =
+          data.error || "Erreur lors de la cr\u00e9ation du paiement.";
       }
     } catch (err: unknown) {
       this.error = `Erreur: ${err instanceof Error ? err.message : "Erreur réseau"}`;
