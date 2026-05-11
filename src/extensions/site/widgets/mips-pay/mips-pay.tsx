@@ -489,7 +489,7 @@ class MipsPay extends HTMLElement {
         title: this.paymentTitle,
         currency: this.currency,
         request_mode: this.requestMode,
-        redirect_url: window.location.href,
+        redirect_url: `${window.location.origin}/thank-you-page`,
         callback_url: `${BACKEND}/api/payment-callback`,
         customer: {
           first_name: this.customerInfo.firstName.trim(),
