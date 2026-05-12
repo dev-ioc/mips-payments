@@ -60,7 +60,11 @@ export default function Dashboard() {
   const filteredPayments = payments.filter(
     (p) =>
       p.order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()),
+      p.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.currency.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.amount.toString().includes(searchTerm.toLowerCase()) ||
+      p.received_at.toLowerCase().includes(searchTerm.toLowerCase()),
   );
 
   return (
