@@ -382,7 +382,7 @@ const CredentialsPage = () => {
           </div>
         </div>
         {(generatedPublicKey || existingPublicKey) && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-6">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-6 mb-6 mt-6">
             <div className="flex items-center gap-2 mb-3">
               <Key size={20} className="text-blue-600" />
               <h2 className="text-[16px] font-bold text-gray-900">
@@ -391,7 +391,7 @@ const CredentialsPage = () => {
             </div>
             <p className="text-[12px] text-gray-600 mb-3">
               Copiez cette clé et collez-la dans le widget MiPS sur votre site
-              Wix pour activer les paiements.
+              Wix pour activer les paiements sur votre site.
             </p>
             <div className="bg-white rounded-xl p-3 border border-blue-100">
               <div className="flex items-center justify-between gap-2">
