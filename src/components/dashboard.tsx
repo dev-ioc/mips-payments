@@ -117,7 +117,6 @@ export default function Dashboard() {
             <TableHead>Montant</TableHead>
             <TableHead>Statut</TableHead>
             <TableHead>Date</TableHead>
-            <TableHead>Action</TableHead>
           </TableRow>
         </TableHeader>
 
@@ -184,11 +183,6 @@ function PaymentRow({
         </Badge>
       </TableCell>
       <TableCell>{date ?? "-"}</TableCell>
-      <TableCell>
-        <Button size="sm" variant="outline">
-          Voir
-        </Button>
-      </TableCell>
     </TableRow>
   );
 }
