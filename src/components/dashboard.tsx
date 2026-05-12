@@ -54,7 +54,6 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-  console.log("data payments :", payments);
   useEffect(() => {
     void fetchPayments(filterStatus);
   }, [filterStatus]);
@@ -89,7 +88,7 @@ export default function Dashboard() {
           onClick={() => setFilterStatus("success")}
           className="text-white bg-success rounded-[8px]"
         >
-          Validés
+          Succès
         </Button>
         <Button
           size="sm"
@@ -130,7 +129,7 @@ export default function Dashboard() {
               currency={p.currency}
               status={
                 p.status === "success"
-                  ? "validé"
+                  ? "Succès"
                   : p.status === "failed"
                     ? "échoué"
                     : "en attente"
@@ -149,7 +148,7 @@ type PaymentRowProps = {
   transactionId: string;
   amount: string;
   currency: string;
-  status: "validé" | "échoué" | "en attente";
+  status: "Succès" | "échoué" | "en attente";
   date?: string;
 };
 
@@ -172,7 +171,7 @@ function PaymentRow({
       <TableCell>
         <Badge
           variant={
-            status === "validé"
+            status === "Succès"
               ? "default"
               : status === "échoué"
                 ? "destructive"
