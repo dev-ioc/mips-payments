@@ -11,7 +11,7 @@ const menu = [
     items: [
       { name: "Credentials MIPS", icon: Key, href: "/credentialls-page" },
       // { name: "Statistiques", icon: BarChart, href: "/dashboard" },
-      // { name: "Mes paiements", icon: CreditCard, href: "/dashboard" },
+      { name: "Mes paiements", icon: CreditCard, href: "/dashboard" },
       // { name: "Factures", icon: FileText, href: "/invoices" },
       // { name: "Notifications", icon: Bell, href: "/notification" },
     ],

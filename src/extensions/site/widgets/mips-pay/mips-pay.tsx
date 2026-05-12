@@ -465,7 +465,7 @@ class MipsPay extends HTMLElement {
       errors.push("Le pr\u00e9nom est requis");
     if (!this.customerInfo.lastName.trim()) errors.push("Le nom est requis");
     if (!this.customerInfo.phone.trim())
-      errors.push("Le t\u00e9l\u00e9phone est requis"); // ✅ Bug corrigé
+      errors.push("Le t\u00e9l\u00e9phone est requis");
     else if (!/^[0-9\s\+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
       errors.push("Num\u00e9ro de t\u00e9l\u00e9phone invalide");
 

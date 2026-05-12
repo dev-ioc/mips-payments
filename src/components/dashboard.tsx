@@ -32,10 +32,8 @@ export default function Dashboard() {
   const fetchPayments = async (status: string) => {
     setLoading(true);
     try {
-      const url =
-        status === "all"
-          ? "https://mips-wix-backend.onrender.com/api/payments"
-          : `https://mips-wix-backend.onrender.com/api/payments/${status}`;
+      const url = `https://mips-wix-backend.onrender.com/api/payments?status=${status}`;
+
       const res = await fetch(url, {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
