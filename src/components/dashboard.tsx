@@ -20,6 +20,9 @@ type Payment = {
   currency: string;
   status: "success" | "failed" | "pending";
   received_at: string;
+  first_name: string;
+  last_name: string;
+  phone_number: string;
 };
 
 export default function Dashboard() {
@@ -120,6 +123,9 @@ export default function Dashboard() {
             <TableHead>Montant</TableHead>
             <TableHead>Statut</TableHead>
             <TableHead>Date</TableHead>
+            <TableHead>Nom</TableHead>
+            <TableHead>Prénom</TableHead>
+            <TableHead>Téléphone</TableHead>
           </TableRow>
         </TableHeader>
 
@@ -139,6 +145,9 @@ export default function Dashboard() {
                     : "en attente"
               }
               date={new Date(p.received_at).toLocaleDateString()}
+              name={p.first_name}
+              last_name={p.last_name}
+              phone={p.phone_number}
             />
           ))}
         </TableBody>
@@ -154,6 +163,9 @@ type PaymentRowProps = {
   currency: string;
   status: "Succès" | "échoué" | "en attente";
   date?: string;
+  name: string;
+  last_name: string;
+  phone: string;
 };
 
 function PaymentRow({
@@ -163,6 +175,9 @@ function PaymentRow({
   currency,
   status,
   date,
+  name,
+  last_name,
+  phone,
 }: PaymentRowProps) {
   return (
     <TableRow>
@@ -186,6 +201,9 @@ function PaymentRow({
         </Badge>
       </TableCell>
       <TableCell>{date ?? "-"}</TableCell>
+      <TableCell>{name}</TableCell>
+      <TableCell>{last_name}</TableCell>
+      <TableCell>{phone}</TableCell>
     </TableRow>
   );
 }
