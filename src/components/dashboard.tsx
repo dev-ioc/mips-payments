@@ -54,7 +54,7 @@ export default function Dashboard() {
       setLoading(false);
     }
   };
-
+  console.log("data payments :", payments);
   useEffect(() => {
     void fetchPayments(filterStatus);
   }, [filterStatus]);
