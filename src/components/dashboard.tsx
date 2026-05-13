@@ -75,28 +75,36 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="container p-6 space-y-6 max-w-screen-lg h-screen">
+    <div className="flex w-full p-6 space-y-6 h-screen">
       <h1 className="text-2xl font-semibold">Mes paiements</h1>
 
       <div className="flex items-center gap-3">
         <Button
           onClick={() => setFilterStatus("all")}
           variant={filterStatus === "all" ? "default" : "outline"}
-          className="bg-primary text-white"
+          className={filterStatus === "all" ? "bg-primary text-white" : ""}
         >
           Tous
         </Button>
         <Button
           onClick={() => setFilterStatus("success")}
           variant={filterStatus === "success" ? "default" : "outline"}
-          className="bg-green-600 text-white"
+          className={
+            filterStatus === "success"
+              ? "bg-green-600 text-white hover:bg-green-700"
+              : "border-green-600 text-green-600 hover:bg-green-50"
+          }
         >
           Succès
         </Button>
         <Button
           onClick={() => setFilterStatus("failed")}
           variant={filterStatus === "failed" ? "default" : "outline"}
-          className="bg-red-600 text-white"
+          className={
+            filterStatus === "failed"
+              ? "bg-red-600 text-white hover:bg-red-700"
+              : "border-red-600 text-red-600 hover:bg-red-50"
+          }
         >
           Échoués
         </Button>
