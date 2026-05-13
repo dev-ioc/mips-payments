@@ -35,7 +35,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useState(1);
 
   const fetchPayments = async (status: string) => {
     setLoading(true);
@@ -75,7 +75,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="p-6 space-y-6 mx-auto">
+    <div className="container p-6 space-y-6">
       <h1 className="text-2xl font-semibold">Mes paiements</h1>
 
       <div className="flex items-center gap-3">
@@ -91,8 +91,8 @@ export default function Dashboard() {
             setCurrentPage(1);
           }}
         >
-          <option value={10}>10</option>
-          <option value={25}>25</option>
+          <option value={1}>10</option>
+          <option value={2}>25</option>
           <option value={50}>50</option>
           <option value={100}>100</option>
         </select>
