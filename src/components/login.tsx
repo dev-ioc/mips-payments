@@ -32,9 +32,6 @@ const Login = () => {
     setIsSaving(true);
     try {
       setErrorMsg("");
-
-      // console.log("Tentative de connexion à:", `${BACKEND}/api/login`);
-
       const res = await fetch(`${BACKEND}/api/login`, {
         method: "POST",
         headers: {
@@ -47,8 +44,6 @@ const Login = () => {
       });
 
       const result = await res.json();
-      console.log("Réponse:", result);
-
       if (res.status === 404) {
         toast.error("Utilisateur introuvable");
         return;
@@ -66,7 +61,6 @@ const Login = () => {
       }
       window.location.href = "/credentialls-page";
     } catch (error) {
-      console.error("Erreur de connexion:", error);
       setErrorMsg("Erreur serveur - Vérifiez que le backend est accessible");
     } finally {
       setIsSaving(false);

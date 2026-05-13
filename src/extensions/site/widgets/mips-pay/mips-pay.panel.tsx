@@ -253,7 +253,17 @@ const Panel: FC = () => {
               Configuration MiPS
             </Text>
           </SidePanel.Field>
-
+          <SidePanel.Field>
+            <TextButton
+              size="small"
+              as="a"
+              href="https://mips-payments.dev-mdg.workers.dev"
+              target="_blank"
+            >
+              Configurer mes credentials MiPS →
+            </TextButton>
+          </SidePanel.Field>
+          <Divider />
           <SidePanel.Field>
             <FormField
               label="Clé publique MiPS"
@@ -433,19 +443,6 @@ const Panel: FC = () => {
                 onSelect={(opt) => updateProp("request-mode", opt.id as string)}
               />
             </FormField>
-          </SidePanel.Field>
-
-          <Divider />
-
-          <SidePanel.Field>
-            <TextButton
-              size="small"
-              as="a"
-              href="https://mips-payments.dev-mdg.workers.dev"
-              target="_blank"
-            >
-              Configurer mes credentials MiPS →
-            </TextButton>
           </SidePanel.Field>
         </SidePanel.Content>
 

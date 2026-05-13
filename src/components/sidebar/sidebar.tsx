@@ -10,10 +10,7 @@ const menu = [
   {
     items: [
       { name: "Credentials MIPS", icon: Key, href: "/credentialls-page" },
-      // { name: "Statistiques", icon: BarChart, href: "/dashboard" },
       { name: "Mes paiements", icon: CreditCard, href: "/dashboard" },
-      // { name: "Factures", icon: FileText, href: "/invoices" },
-      // { name: "Notifications", icon: Bell, href: "/notification" },
     ],
   },
 ];
@@ -42,7 +39,6 @@ function SidebarContent() {
 
       if (!response.ok) {
         if (response.status === 401) {
-          console.warn("Token expiré ou invalide");
           localStorage.removeItem("token");
           setUser(null);
         }
@@ -52,7 +48,6 @@ function SidebarContent() {
       const data = await response.json();
       setUser(data.user || data);
     } catch (err) {
-      console.error("Erreur récupération utilisateur:", err);
       setUser(null);
     } finally {
       setLoading(false);

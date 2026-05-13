@@ -176,11 +176,8 @@ const CredentialsPage = () => {
         console.warn();
         return "dev-token-temp";
       }
-
-      console.error("Impossible de récupérer le token d'authentification");
       return null;
     } catch (error) {
-      console.error("Erreur récupération token:", error);
       return null;
     }
   };
@@ -197,12 +194,8 @@ const CredentialsPage = () => {
         }
         if (sid) setSiteId(sid);
 
-        console.log("📍 SiteId:", sid);
-        console.log("🔑 Token:", token ? token.slice(0, 20) + "..." : "aucun");
-
         if (token) await loadCredentials(token);
       } catch (e) {
-        console.error("Init error:", e);
       } finally {
         setIsInitializing(false);
       }
@@ -221,7 +214,6 @@ const CredentialsPage = () => {
       });
 
       if (response.status === 401) {
-        console.warn("Token invalide ou expiré");
         localStorage.removeItem("token");
         return;
       }
@@ -229,7 +221,6 @@ const CredentialsPage = () => {
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
 
       const data = await response.json();
-      console.log("Credentials chargés:", data);
 
       if (data.configured && data.merchant) {
         setForm({
@@ -572,8 +563,6 @@ const CredentialsPage = () => {
             </div>
           </form>
         </div>
-
-        {/* Instructions */}
         <div className="bg-gray-50 rounded-2xl border border-gray-200 p-6">
           <h3 className="text-[14px] font-semibold text-gray-900 mb-3">
             Comment utiliser votre clé publique ?
@@ -593,7 +582,8 @@ const CredentialsPage = () => {
             </li>
             <li className="flex gap-2">
               <span className="font-bold text-blue-600">4.</span>
-              Configurez l'apparence du bouton et sauvegardez
+              Configurez l'apparence du bouton et sauvegardez en cliquant sur le
+              bouton "Vérifier" dans le paramètres
             </li>
           </ol>
         </div>
