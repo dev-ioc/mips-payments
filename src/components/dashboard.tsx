@@ -75,7 +75,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="container p-6 space-y-6">
+    <div className="container p-6 space-y-6 mx-auto max-w-screen-lg h-screen">
       <h1 className="text-2xl font-semibold">Mes paiements</h1>
 
       <div className="flex items-center gap-3">
