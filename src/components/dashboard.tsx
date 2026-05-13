@@ -82,18 +82,21 @@ export default function Dashboard() {
         <Button
           onClick={() => setFilterStatus("all")}
           variant={filterStatus === "all" ? "default" : "outline"}
+          className="bg-primary text-white"
         >
           Tous
         </Button>
         <Button
           onClick={() => setFilterStatus("success")}
           variant={filterStatus === "success" ? "default" : "outline"}
+          className="bg-green-600 text-white"
         >
           Succès
         </Button>
         <Button
           onClick={() => setFilterStatus("failed")}
           variant={filterStatus === "failed" ? "default" : "outline"}
+          className="bg-red-600 text-white"
         >
           Échoués
         </Button>
@@ -123,7 +126,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="border rounded-lg overflow-x-auto">
+      <div className="border rounded-lg overflow-x-auto mx-w-[100%]">
         <Table className="w-full">
           <TableHeader>
             <TableRow>
