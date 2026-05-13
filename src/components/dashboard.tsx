@@ -35,7 +35,7 @@ export default function Dashboard() {
   const [searchTerm, setSearchTerm] = useState("");
 
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
 
   const fetchPayments = async (status: string) => {
     setLoading(true);
@@ -79,9 +79,24 @@ export default function Dashboard() {
       <h1 className="text-2xl font-semibold">Mes paiements</h1>
 
       <div className="flex items-center gap-3">
-        <Button onClick={() => setFilterStatus("all")}>Tous</Button>
-        <Button onClick={() => setFilterStatus("success")}>Succès</Button>
-        <Button onClick={() => setFilterStatus("failed")}>Échoués</Button>
+        <Button
+          onClick={() => setFilterStatus("all")}
+          variant={filterStatus === "all" ? "default" : "outline"}
+        >
+          Tous
+        </Button>
+        <Button
+          onClick={() => setFilterStatus("success")}
+          variant={filterStatus === "success" ? "default" : "outline"}
+        >
+          Succès
+        </Button>
+        <Button
+          onClick={() => setFilterStatus("failed")}
+          variant={filterStatus === "failed" ? "default" : "outline"}
+        >
+          Échoués
+        </Button>
 
         <select
           className="border rounded px-2 py-1 ml-auto"
@@ -91,8 +106,8 @@ export default function Dashboard() {
             setCurrentPage(1);
           }}
         >
-          <option value={1}>10</option>
-          <option value={2}>25</option>
+          <option value={10}>10</option>
+          <option value={25}>25</option>
           <option value={50}>50</option>
           <option value={100}>100</option>
         </select>
@@ -108,69 +123,127 @@ export default function Dashboard() {
         />
       </div>
 
-      <Table className="table-fixed w-full">
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[120px]">Order Id</TableHead>
-            <TableHead className="w-[180px]">Transaction</TableHead>
-            <TableHead className="w-[80px]">Devise</TableHead>
-            <TableHead className="w-[100px]">Montant</TableHead>
-            <TableHead className="w-[100px]">Statut</TableHead>
-            <TableHead className="w-[250px]">Raison</TableHead>
-            <TableHead className="w-[120px]">Date</TableHead>
-            <TableHead className="w-[120px]">Nom</TableHead>
-            <TableHead className="w-[120px]">Prénom</TableHead>
-            <TableHead className="w-[140px]">Téléphone</TableHead>
-          </TableRow>
-        </TableHeader>
-
-        <TableBody>
-          {paginatedPayments.map((p) => (
-            <TableRow key={p.id}>
-              <TableCell className="truncate">{p.order_id}</TableCell>
-              <TableCell className="truncate">{p.transaction_id}</TableCell>
-              <TableCell>
-                <Badge variant="outline">{p.currency}</Badge>
-              </TableCell>
-              <TableCell>{p.amount}</TableCell>
-              <TableCell>
-                <Badge>
-                  {p.status === "success"
-                    ? "Succès"
-                    : p.status === "failed"
-                      ? "Échoué"
-                      : "En attente"}
-                </Badge>
-              </TableCell>
-              <TableCell className="truncate">{p.fail_reason || "-"}</TableCell>
-              <TableCell>
-                {new Date(p.received_at).toLocaleDateString()}
-              </TableCell>
-              <TableCell>{p.client_first_name}</TableCell>
-              <TableCell>{p.client_last_name}</TableCell>
-              <TableCell>{p.client_phone_number}</TableCell>
+      <div className="border rounded-lg overflow-x-auto">
+        <Table className="w-full">
+          <TableHeader>
+            <TableRow>
+              <TableHead className="w-[120px]">Order Id</TableHead>
+              <TableHead className="w-[180px]">Transaction</TableHead>
+              <TableHead className="w-[80px]">Devise</TableHead>
+              <TableHead className="w-[100px]">Montant</TableHead>
+              <TableHead className="w-[100px]">Statut</TableHead>
+              <TableHead className="min-w-[300px]">Raison de l'échec</TableHead>
+              <TableHead className="w-[120px]">Date</TableHead>
+              <TableHead className="w-[120px]">Nom</TableHead>
+              <TableHead className="w-[120px]">Prénom</TableHead>
+              <TableHead className="w-[140px]">Téléphone</TableHead>
             </TableRow>
-          ))}
-        </TableBody>
-      </Table>
+          </TableHeader>
+
+          <TableBody>
+            {loading ? (
+              <TableRow>
+                <TableCell colSpan={10} className="text-center py-8">
+                  Chargement...
+                </TableCell>
+              </TableRow>
+            ) : paginatedPayments.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={10} className="text-center py-8">
+                  Aucun paiement trouvé
+                </TableCell>
+              </TableRow>
+            ) : (
+              paginatedPayments.map((p) => (
+                <TableRow key={p.id}>
+                  <TableCell className="align-top">
+                    <span className="block max-w-[110px] break-words">
+                      {p.order_id}
+                    </span>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <span className="block max-w-[170px] break-words">
+                      {p.transaction_id}
+                    </span>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Badge variant="outline">{p.currency}</Badge>
+                  </TableCell>
+                  <TableCell className="align-top font-medium">
+                    {p.amount.toFixed(2)}
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <Badge
+                      variant={
+                        p.status === "success"
+                          ? "default"
+                          : p.status === "failed"
+                            ? "destructive"
+                            : "secondary"
+                      }
+                    >
+                      {p.status === "success"
+                        ? "Succès"
+                        : p.status === "failed"
+                          ? "Échoué"
+                          : "En attente"}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <div className="max-w-[280px] whitespace-normal break-words">
+                      {p.fail_reason ? (
+                        <span className="text-red-600 text-sm">
+                          {p.fail_reason}
+                        </span>
+                      ) : (
+                        "-"
+                      )}
+                    </div>
+                  </TableCell>
+                  <TableCell className="align-top whitespace-nowrap">
+                    {new Date(p.received_at).toLocaleDateString("fr-FR")}
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <span className="block max-w-[110px] break-words">
+                      {p.client_first_name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <span className="block max-w-[110px] break-words">
+                      {p.client_last_name}
+                    </span>
+                  </TableCell>
+                  <TableCell className="align-top">
+                    <span className="block max-w-[130px] break-words">
+                      {p.client_phone_number}
+                    </span>
+                  </TableCell>
+                </TableRow>
+              ))
+            )}
+          </TableBody>
+        </Table>
+      </div>
 
       <div className="flex justify-between items-center mt-4">
-        <span>
+        <span className="text-sm text-gray-600">
           Page {currentPage} / {totalPages}
         </span>
 
         <div className="flex gap-2">
           <Button
+            variant="outline"
             disabled={currentPage === 1}
             onClick={() => setCurrentPage((p) => p - 1)}
           >
-            Précédent
+            ← Précédent
           </Button>
           <Button
+            variant="outline"
             disabled={currentPage === totalPages}
             onClick={() => setCurrentPage((p) => p + 1)}
           >
-            Suivant
+            Suivant →
           </Button>
         </div>
       </div>
