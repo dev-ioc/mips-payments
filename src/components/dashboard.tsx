@@ -138,16 +138,16 @@ export default function Dashboard() {
         <Table className="w-full">
           <TableHeader>
             <TableRow>
-              <TableHead className="w-[120px]">Order Id</TableHead>
-              <TableHead className="w-[180px]">Transaction</TableHead>
-              <TableHead className="w-[80px]">Devise</TableHead>
-              <TableHead className="w-[100px]">Montant</TableHead>
-              <TableHead className="w-[100px]">Statut</TableHead>
-              <TableHead className="min-w-[300px]">Raison de l'échec</TableHead>
-              <TableHead className="w-[120px]">Date</TableHead>
-              <TableHead className="w-[120px]">Nom</TableHead>
-              <TableHead className="w-[120px]">Prénom</TableHead>
-              <TableHead className="w-[140px]">Téléphone</TableHead>
+              <TableHead>Order Id</TableHead>
+              <TableHead>Transaction</TableHead>
+              <TableHead>Devise</TableHead>
+              <TableHead>Montant</TableHead>
+              <TableHead>Statut</TableHead>
+              <TableHead>Raison de l'échec</TableHead>
+              <TableHead>Date</TableHead>
+              <TableHead>Nom</TableHead>
+              <TableHead>Prénom</TableHead>
+              <TableHead>Téléphone</TableHead>
             </TableRow>
           </TableHeader>
 
@@ -167,15 +167,9 @@ export default function Dashboard() {
             ) : (
               paginatedPayments.map((p) => (
                 <TableRow key={p.id}>
+                  <TableCell className="align-top">{p.order_id}</TableCell>
                   <TableCell className="align-top">
-                    <span className="block max-w-[110px] break-words">
-                      {p.order_id}
-                    </span>
-                  </TableCell>
-                  <TableCell className="align-top">
-                    <span className="block max-w-[170px] break-words">
-                      {p.transaction_id}
-                    </span>
+                    {p.transaction_id}
                   </TableCell>
                   <TableCell className="align-top">
                     <Badge variant="outline">{p.currency}</Badge>
@@ -225,9 +219,7 @@ export default function Dashboard() {
                     </span>
                   </TableCell>
                   <TableCell className="align-top">
-                    <span className="block max-w-[130px] break-words">
-                      {p.client_phone_number}
-                    </span>
+                    {p.client_phone_number}
                   </TableCell>
                 </TableRow>
               ))
