@@ -19,5 +19,4 @@ const DashboardPage: FC = () => {
     </DashboardLayout>
   );
 };
-
 export default DashboardPage;
