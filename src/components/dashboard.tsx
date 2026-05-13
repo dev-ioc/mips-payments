@@ -33,6 +33,10 @@ export default function Dashboard() {
     "all" | "success" | "failed" | "pending"
   >("all");
   const [searchTerm, setSearchTerm] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+
   const fetchPayments = async (status: string) => {
     setLoading(true);
     try {
@@ -42,174 +46,134 @@ export default function Dashboard() {
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
       });
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Erreur API:", text);
-        setPayments([]);
-        return;
-      }
-
       const data = await res.json();
       setPayments(data.payments ?? []);
     } catch (err) {
-      console.error("Erreur récupération paiements:", err);
+      console.error(err);
       setPayments([]);
     } finally {
       setLoading(false);
     }
   };
+
   useEffect(() => {
     void fetchPayments(filterStatus);
   }, [filterStatus]);
+
   const filteredPayments = payments.filter(
     (p) =>
       p.order_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.transaction_id.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.status.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.currency.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      p.amount.toString().includes(searchTerm.toLowerCase()) ||
-      p.received_at.toLowerCase().includes(searchTerm.toLowerCase()),
+      p.status.toLowerCase().includes(searchTerm.toLowerCase()),
+  );
+
+  const totalPages = Math.ceil(filteredPayments.length / pageSize);
+
+  const paginatedPayments = filteredPayments.slice(
+    (currentPage - 1) * pageSize,
+    currentPage * pageSize,
   );
 
   return (
-    <div className="p-6 space-y-6 mx-auto h-screen">
-      <div className="flex justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Mes paiements</h1>
-          <p className="text-muted-foreground">
-            Historique de vos transactions
-          </p>
-        </div>
-      </div>
-      <div className="flex gap-2 items-center">
-        <Button
-          size="sm"
-          variant={filterStatus === "all" ? "default" : "outline"}
-          onClick={() => setFilterStatus("all")}
-          className="rounded-[8px]"
+    <div className="p-6 space-y-6 mx-auto">
+      <h1 className="text-2xl font-semibold">Mes paiements</h1>
+
+      <div className="flex items-center gap-3">
+        <Button onClick={() => setFilterStatus("all")}>Tous</Button>
+        <Button onClick={() => setFilterStatus("success")}>Succès</Button>
+        <Button onClick={() => setFilterStatus("failed")}>Échoués</Button>
+
+        <select
+          className="border rounded px-2 py-1 ml-auto"
+          value={pageSize}
+          onChange={(e) => {
+            setPageSize(Number(e.target.value));
+            setCurrentPage(1);
+          }}
         >
-          Tous
-        </Button>
-        <Button
-          size="sm"
-          variant={filterStatus === "success" ? "default" : "outline"}
-          onClick={() => setFilterStatus("success")}
-          className="text-white bg-success rounded-[8px]"
-        >
-          Succès
-        </Button>
-        <Button
-          size="sm"
-          variant={filterStatus === "failed" ? "destructive" : "outline"}
-          onClick={() => setFilterStatus("failed")}
-          className="bg-error text-white rounded-[8px]"
-        >
-          Échoués
-        </Button>
+          <option value={10}>10</option>
+          <option value={25}>25</option>
+          <option value={50}>50</option>
+          <option value={100}>100</option>
+        </select>
 
         <Input
           placeholder="Rechercher..."
-          className="ml-auto w-64"
+          className="w-64"
           value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
+          onChange={(e) => {
+            setSearchTerm(e.target.value);
+            setCurrentPage(1);
+          }}
         />
       </div>
 
-      <Table>
+      <Table className="table-fixed w-full">
         <TableHeader>
           <TableRow>
-            <TableHead>Order Id</TableHead>
-            <TableHead>Transaction ID</TableHead>
-            <TableHead>Devise</TableHead>
-            <TableHead>Montant</TableHead>
-            <TableHead>Statut</TableHead>
-            <TableHead>Raison de l'échec</TableHead>
-            <TableHead>Date</TableHead>
-            <TableHead>Nom</TableHead>
-            <TableHead>Prénom</TableHead>
-            <TableHead>Téléphone</TableHead>
+            <TableHead className="w-[120px]">Order Id</TableHead>
+            <TableHead className="w-[180px]">Transaction</TableHead>
+            <TableHead className="w-[80px]">Devise</TableHead>
+            <TableHead className="w-[100px]">Montant</TableHead>
+            <TableHead className="w-[100px]">Statut</TableHead>
+            <TableHead className="w-[250px]">Raison</TableHead>
+            <TableHead className="w-[120px]">Date</TableHead>
+            <TableHead className="w-[120px]">Nom</TableHead>
+            <TableHead className="w-[120px]">Prénom</TableHead>
+            <TableHead className="w-[140px]">Téléphone</TableHead>
           </TableRow>
         </TableHeader>
 
         <TableBody>
-          {filteredPayments.map((p) => (
-            <PaymentRow
-              key={p.id}
-              orderId={p.order_id}
-              transactionId={p.transaction_id}
-              amount={`${p.amount} ${p.currency}`}
-              currency={p.currency}
-              status={
-                p.status === "success"
-                  ? "Succès"
-                  : p.status === "failed"
-                    ? "échoué"
-                    : "en attente"
-              }
-              failed_reason={p.fail_reason}
-              date={new Date(p.received_at).toLocaleDateString()}
-              client_first_name={p.client_first_name}
-              client_last_name={p.client_last_name}
-              client_phone_number={p.client_phone_number}
-            />
+          {paginatedPayments.map((p) => (
+            <TableRow key={p.id}>
+              <TableCell className="truncate">{p.order_id}</TableCell>
+              <TableCell className="truncate">{p.transaction_id}</TableCell>
+              <TableCell>
+                <Badge variant="outline">{p.currency}</Badge>
+              </TableCell>
+              <TableCell>{p.amount}</TableCell>
+              <TableCell>
+                <Badge>
+                  {p.status === "success"
+                    ? "Succès"
+                    : p.status === "failed"
+                      ? "Échoué"
+                      : "En attente"}
+                </Badge>
+              </TableCell>
+              <TableCell className="truncate">{p.fail_reason || "-"}</TableCell>
+              <TableCell>
+                {new Date(p.received_at).toLocaleDateString()}
+              </TableCell>
+              <TableCell>{p.client_first_name}</TableCell>
+              <TableCell>{p.client_last_name}</TableCell>
+              <TableCell>{p.client_phone_number}</TableCell>
+            </TableRow>
           ))}
         </TableBody>
       </Table>
+
+      <div className="flex justify-between items-center mt-4">
+        <span>
+          Page {currentPage} / {totalPages}
+        </span>
+
+        <div className="flex gap-2">
+          <Button
+            disabled={currentPage === 1}
+            onClick={() => setCurrentPage((p) => p - 1)}
+          >
+            Précédent
+          </Button>
+          <Button
+            disabled={currentPage === totalPages}
+            onClick={() => setCurrentPage((p) => p + 1)}
+          >
+            Suivant
+          </Button>
+        </div>
+      </div>
     </div>
-  );
-}
-
-type PaymentRowProps = {
-  orderId: string;
-  transactionId: string;
-  amount: string;
-  currency: string;
-  status: "Succès" | "échoué" | "en attente";
-  date?: string;
-  client_first_name: string;
-  client_last_name: string;
-  client_phone_number: string;
-  failed_reason?: string;
-};
-
-function PaymentRow({
-  orderId,
-  transactionId,
-  amount,
-  currency,
-  status,
-  date,
-  client_first_name,
-  client_last_name,
-  client_phone_number,
-  failed_reason,
-}: PaymentRowProps) {
-  return (
-    <TableRow>
-      <TableCell>{orderId}</TableCell>
-      <TableCell>{transactionId}</TableCell>
-      <TableCell>
-        <Badge variant="outline">{currency}</Badge>
-      </TableCell>
-      <TableCell className="font-medium">{amount}</TableCell>
-      <TableCell>
-        <Badge
-          variant={
-            status === "Succès"
-              ? "default"
-              : status === "échoué"
-                ? "destructive"
-                : "secondary"
-          }
-        >
-          {status}
-        </Badge>
-      </TableCell>
-      <TableCell>{failed_reason}</TableCell>
-      <TableCell>{date ?? "-"}</TableCell>
-      <TableCell>{client_first_name}</TableCell>
-      <TableCell>{client_last_name}</TableCell>
-      <TableCell>{client_phone_number}</TableCell>
-    </TableRow>
   );
 }
