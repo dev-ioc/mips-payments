@@ -72,7 +72,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="container p-6 space-y-6 mx-auto h-screen">
+    <div className="p-6 space-y-6 mx-auto h-screen">
       <div className="flex justify-between">
         <div>
           <h1 className="text-2xl font-semibold">Mes paiements</h1>
