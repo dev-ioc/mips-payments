@@ -8,13 +8,11 @@ const DashboardPage: FC = () => {
   return (
     <DashboardLayout>
       <WixDesignSystemProvider features={{ newColorsBranding: true }}>
-        <Page>
-          <Page.Content>
-            <div className="h-screen w-full">
-              <MipsDashboard />
-            </div>
-          </Page.Content>
-        </Page>
+        <Page.Content>
+          <div className="h-screen w-full">
+            <MipsDashboard />
+          </div>
+        </Page.Content>
       </WixDesignSystemProvider>
     </DashboardLayout>
   );
