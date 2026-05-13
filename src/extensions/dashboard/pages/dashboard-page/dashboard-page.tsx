@@ -10,7 +10,7 @@ const DashboardPage: FC = () => {
       <WixDesignSystemProvider features={{ newColorsBranding: true }}>
         <Page>
           <Page.Content>
-            <div className="h-screen flex items-center justify-center w-full h-full">
+            <div className="h-screen w-full">
               <MipsDashboard />
             </div>
           </Page.Content>

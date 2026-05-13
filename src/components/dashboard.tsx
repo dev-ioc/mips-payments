@@ -75,7 +75,7 @@ export default function Dashboard() {
   );
 
   return (
-    <div className="flex w-full p-6 space-y-6 h-screen">
+    <div className="w-full p-6 space-y-6 h-screen">
       <h1 className="text-2xl font-semibold">Mes paiements</h1>
 
       <div className="flex items-center gap-3">
@@ -134,7 +134,7 @@ export default function Dashboard() {
         />
       </div>
 
-      <div className="border rounded-lg overflow-x-auto mx-w-[100%]">
+      <div className="border rounded-lg overflow-x-auto w-full">
         <Table className="w-full">
           <TableHeader>
             <TableRow>
