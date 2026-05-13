@@ -76,7 +76,7 @@ export default function Dashboard() {
 
   return (
     <div className="w-full p-6 space-y-6 h-screen">
-      <h1 className="text-2xl font-semibold">Mes paiements</h1>
+      <h1 className="text-2xl font-semibold">Liste des paiements</h1>
 
       <div className="flex items-center gap-3">
         <Button
