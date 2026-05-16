@@ -174,6 +174,7 @@ class MipsPay extends HTMLElement {
   }
 
   // ── Montant dynamique ────────────────────────────────────────────────────────
+  // Améliorer la méthode updateDynamicAmount
   private async updateDynamicAmount(): Promise<void> {
     if (this.amountSource === "fixed" || !this.amountSource) {
       this.dynamicAmount = this.fixedAmount;
@@ -185,7 +186,64 @@ class MipsPay extends HTMLElement {
     }
     if (this.amountSource === "cart") {
       const { amount } = await this.getWixCartTotal();
-      this.dynamicAmount = amount > 0 ? amount : this.fixedAmount;
+      const newAmount = amount > 0 ? amount : this.fixedAmount;
+
+      if (this.dynamicAmount !== newAmount) {
+        console.log(
+          "[MiPS] Montant mis à jour:",
+          newAmount,
+          "ancien:",
+          this.dynamicAmount,
+        );
+        this.dynamicAmount = newAmount;
+      }
+    }
+  }
+
+  // Améliorer la méthode handlePay pour plus de logs
+  private handlePay() {
+    console.log("[MiPS] handlePay appelé");
+    console.log("[MiPS] isEditorContext:", this.isEditorContext());
+    console.log("[MiPS] hasCredentials:", this.hasCredentials);
+    console.log("[MiPS] dynamicAmount:", this.dynamicAmount);
+
+    if (this.isEditorContext()) {
+      console.log("[MiPS] Mode éditeur - pas d'action");
+      return;
+    }
+
+    if (!this.hasCredentials) {
+      this.error =
+        "Configuration MiPS non configurée. Contactez l'administrateur du site.";
+      console.error("[MiPS]", this.error);
+      this.render();
+      this.attachDOMEvents();
+      return;
+    }
+
+    if (!this.dynamicAmount || this.dynamicAmount <= 0) {
+      this.error = "Montant invalide ou panier vide.";
+      console.error("[MiPS]", this.error);
+      this.render();
+      this.attachDOMEvents();
+      return;
+    }
+
+    console.log("[MiPS] Affichage du formulaire client");
+    this.error = "";
+    this.showCustomerForm = true;
+    this.customerFormErrors = [];
+    this.render();
+    this.attachDOMEvents();
+  }
+
+  // Ajouter une méthode pour forcer la mise à jour depuis le Velo
+  public updateAmount(amount: number) {
+    console.log("[MiPS] updateAmount appelé depuis Velo:", amount);
+    if (amount > 0) {
+      this.dynamicAmount = amount;
+      this.render();
+      this.attachDOMEvents();
     }
   }
 
@@ -296,30 +354,6 @@ class MipsPay extends HTMLElement {
       }
     });
   }
-
-  // ── Gestion paiement ─────────────────────────────────────────────────────────
-  private handlePay() {
-    if (this.isEditorContext()) return;
-    if (!this.hasCredentials) {
-      this.error =
-        "Configuration MiPS non configurée. Contactez l'administrateur du site.";
-      this.render();
-      this.attachDOMEvents();
-      return;
-    }
-    if (!this.dynamicAmount || this.dynamicAmount <= 0) {
-      this.error = "Montant invalide ou panier vide.";
-      this.render();
-      this.attachDOMEvents();
-      return;
-    }
-    this.error = "";
-    this.showCustomerForm = true;
-    this.customerFormErrors = [];
-    this.render();
-    this.attachDOMEvents();
-  }
-
   // Méthode utilitaire pour échapper le HTML
   private escapeHtml(str: string): string {
     if (!str) return "";
