@@ -2,8 +2,5 @@
   "name": "mips-payments",
   "compatibility_date": "2026-04-29",
   "compatibility_flags": ["nodejs_compat"],
-  "main": "dist/_worker.js/index.js",
-  "assets": {
-    "directory": "./dist",
-  },
+  "main": "worker.js"
 }
