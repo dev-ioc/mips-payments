@@ -1,5 +1,10 @@
 // src/extensions/site/widgets/mips-pay/mips-pay.tsx
 
+// ─── URL du proxy CORS Cloudflare ─────────────────────────────────────────────
+// Remplacer par votre URL de Worker après déploiement
+// ex: "https://mips-cors-proxy.VOTRE-COMPTE.workers.dev"
+const MIPS_PROXY = "https://mips-cors-proxy.dev-mdg.workers.dev";
+
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
 // ─── Crypto ───────────────────────────────────────────────────────────────────
@@ -41,12 +46,11 @@ class MipsPay extends HTMLElement {
   private loading = false;
   private error = "";
 
-  // Montant — trois sources, priorité décroissante
-  private _veloAmount = 0;      // Injecté par Velo via setAttribute('amount', ...)
-  private _cartAmount  = 0;      // Détecté depuis le panier Wix
+  private _veloAmount  = 0;
+  private _cartAmount  = 0;
   private _initialized = false;
 
-  private showCustomerForm    = false;
+  private showCustomerForm   = false;
   private customerFormErrors: string[] = [];
   private customerInfo = { firstName: "", lastName: "", phone: "", email: "" };
 
@@ -62,7 +66,7 @@ class MipsPay extends HTMLElement {
   // ── Montant effectif ─────────────────────────────────────────────────────────
   private get effectiveAmount(): number {
     if (this._veloAmount > 0) return this._veloAmount;
-    if (this._cartAmount  > 0) return this._cartAmount;
+    if (this._cartAmount > 0) return this._cartAmount;
     return this.fixedAmount;
   }
 
@@ -82,52 +86,35 @@ class MipsPay extends HTMLElement {
   connectedCallback() {
     if (this._initialized) return;
     this._initialized = true;
-
-    // Rendu immédiat — pas de fetch, widget toujours visible
     this.render();
     this.attachDOMEvents();
-
-    // Montant panier si source = cart (et pas encore de montant Velo)
-    if (this.amountSource === "cart") {
-      this.loadCartAmount();
-    }
+    if (this.amountSource === "cart") this.loadCartAmount();
     this.listenToMessages();
   }
 
   attributeChangedCallback(name: string, oldVal: string, newVal: string) {
     if (!newVal || newVal === oldVal) return;
-
     if (name === "amount") {
       const parsed = parseFloat(newVal);
-      // Toujours mettre à jour — le Velo peut changer le montant plusieurs fois
-      if (!isNaN(parsed) && parsed >= 0) {
-        this._veloAmount = parsed;
-      }
+      if (!isNaN(parsed) && parsed >= 0) this._veloAmount = parsed;
     }
-
-    if (this.isConnected) {
-      this.render();
-      this.attachDOMEvents();
-    }
+    if (this.isConnected) { this.render(); this.attachDOMEvents(); }
   }
 
-  // ─── Méthode publique appelable depuis Velo ────────────────────────────────
-  // Utilisée comme alternative à setAttribute si besoin
+  // Méthode publique alternative (appelable depuis Velo si besoin)
   public setAmount(amount: number) {
     if (!isNaN(amount) && amount >= 0) {
       this._veloAmount = amount;
-      this.render();
-      this.attachDOMEvents();
+      this.render(); this.attachDOMEvents();
     }
   }
 
-  // ─── Chargement montant panier ────────────────────────────────────────────────
+  // ─── Montant panier ───────────────────────────────────────────────────────────
   private async loadCartAmount(): Promise<void> {
     const { amount } = await this.getWixCartTotal();
     if (amount > 0 && this._veloAmount === 0) {
       this._cartAmount = amount;
-      this.render();
-      this.attachDOMEvents();
+      this.render(); this.attachDOMEvents();
     }
   }
 
@@ -188,25 +175,23 @@ class MipsPay extends HTMLElement {
     }
   }
 
-  // ─── Écoute messages window ───────────────────────────────────────────────────
+  // ─── Messages ────────────────────────────────────────────────────────────────
   private listenToMessages() {
     window.addEventListener("message", async (ev) => {
-      // Mise à jour montant panier depuis postMessage
-      if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0) {
+      if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0)
         await this.loadCartAmount();
-      }
-      // Callbacks paiement MiPS
+
       const mipsOrigins = ["https://api.mips.mu", "https://mips.mu"];
       const fromMips = mipsOrigins.some((o) => ev.origin?.startsWith(o));
+
       if (
         ev.data?.type === "mips_payment_success" ||
-        ev.data?.payment_status === "success" ||
         (fromMips && (ev.data?.status === "completed" || ev.data?.payment_status === "success"))
       ) this.handlePaymentSuccess();
 
       if (
         ev.data?.type === "mips_payment_failed" ||
-        (fromMips && (ev.data?.status === "failed" || ev.data?.payment_status === "failed"))
+        (fromMips && ev.data?.status === "failed")
       ) this.handlePaymentFailed();
     });
   }
@@ -221,7 +206,7 @@ class MipsPay extends HTMLElement {
   // ─── Paiement ────────────────────────────────────────────────────────────────
   private handlePay() {
     if (!this.hasCredentials) {
-      this.error = "Configuration MiPS non configurée. Contactez l'administrateur.";
+      this.error = "Configuration MiPS non configurée.";
       this.render(); this.attachDOMEvents(); return;
     }
     if (this.effectiveAmount <= 0) {
@@ -258,24 +243,24 @@ class MipsPay extends HTMLElement {
         this.loading = false; this.render(); this.attachDOMEvents(); return;
       }
 
-      const id_order = generateOrderId();
-      this.paymentId = id_order;
-      const amount = this.effectiveAmount;
+      const id_order  = generateOrderId();
+      this.paymentId  = id_order;
+      const amount    = this.effectiveAmount;
       const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
 
-      const res = await fetch("https://api.mips.mu/api/load_payment_zone", {
+      // Appel via le proxy CORS (pas directement api.mips.mu)
+      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-          Authorization: `Basic ${basicAuth}`,
-          "user-agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+          "Content-Type":  "application/json",
+          "Accept":        "application/json",
+          "Authorization": `Basic ${basicAuth}`,
         },
         body: JSON.stringify({
           authentify: {
-            id_merchant: creds.id_merchant,
-            id_entity: creds.id_entity,
-            id_operator: creds.id_operator,
+            id_merchant:      creds.id_merchant,
+            id_entity:        creds.id_entity,
+            id_operator:      creds.id_operator,
             operator_password: creds.operator_password,
           },
           order: { id_order, currency: this.currency, amount },
@@ -297,17 +282,17 @@ class MipsPay extends HTMLElement {
       const raw = await res.text();
       let mipsData: any;
       try { mipsData = JSON.parse(raw); }
-      catch { throw new Error("Réponse invalide de l'API MiPS"); }
+      catch { throw new Error("Réponse invalide du proxy MiPS"); }
 
-      const opStatus       = mipsData.answer?.operation_status || mipsData.operation_status;
+      const opStatus        = mipsData.answer?.operation_status || mipsData.operation_status;
       const paymentZoneData = mipsData.answer?.payment_zone_data || null;
 
       if (opStatus !== "success") {
         throw new Error(mipsData.answer?.message || "Erreur création paiement MiPS");
       }
-      if (!paymentZoneData) throw new Error("Aucune zone de paiement retournée par MiPS");
+      if (!paymentZoneData) throw new Error("Aucune zone de paiement retournée");
 
-      // Extraire l'URL iframe ou créer un blob
+      // Extraire src de l'iframe ou créer un blob
       const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
       this.iframeUrl = iframeMatch?.[1]
         || URL.createObjectURL(new Blob([paymentZoneData], { type: "text/html" }));
@@ -337,18 +322,17 @@ class MipsPay extends HTMLElement {
       nb.addEventListener("click", fn);
     };
 
-    replace("mips-pay-btn", () => this.handlePay());
-    replace("mips-confirm-pay", () => this.processPayment());
+    replace("mips-pay-btn",       () => this.handlePay());
+    replace("mips-confirm-pay",   () => this.processPayment());
     replace("mips-cancel-form",   () => { this.showCustomerForm = false; this.customerFormErrors = []; this.render(); this.attachDOMEvents(); });
     replace("mips-cancel-form-2", () => { this.showCustomerForm = false; this.customerFormErrors = []; this.render(); this.attachDOMEvents(); });
-    replace("mips-iframe-close", () => {
+    replace("mips-iframe-close",  () => {
       this.showIframe = false;
       if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
       this.iframeUrl = "";
       this.render(); this.attachDOMEvents();
     });
 
-    // Champs formulaire client
     const fields: Array<[string, keyof typeof this.customerInfo]> = [
       ["mips-firstname", "firstName"], ["mips-lastname", "lastName"],
       ["mips-phone",     "phone"],     ["mips-email",    "email"],
@@ -457,8 +441,8 @@ class MipsPay extends HTMLElement {
           color:#64748B; display:flex; align-items:center; justify-content:center;
         }
         .modal-close:hover { background:#E2E8F0; }
-        .modal-title   { font-size:17px; font-weight:700; color:#1E293B; text-align:center; margin-bottom:4px; }
-        .modal-subtitle{ font-size:13px; color:#94A3B8; text-align:center; margin-bottom:16px; }
+        .modal-title    { font-size:17px; font-weight:700; color:#1E293B; text-align:center; margin-bottom:4px; }
+        .modal-subtitle { font-size:13px; color:#94A3B8; text-align:center; margin-bottom:16px; }
         .amount-badge {
           background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px;
           padding:10px 14px; text-align:center; margin-bottom:18px;
