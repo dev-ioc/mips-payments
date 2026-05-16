@@ -214,94 +214,134 @@ class MipsPay extends HTMLElement {
     this.render(); this.attachDOMEvents();
   }
 
-  private async processPayment() {
-    const errors: string[] = [];
-    if (!this.customerInfo.firstName.trim()) errors.push("Le prénom est requis");
-    if (!this.customerInfo.lastName.trim())  errors.push("Le nom est requis");
-    if (!this.customerInfo.phone.trim())     errors.push("Le téléphone est requis");
-    else if (!/^[0-9\s+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
-      errors.push("Numéro de téléphone invalide");
+ private async processPayment() {
+  // Validation du formulaire
+  const errors: string[] = [];
+  if (!this.customerInfo.firstName.trim()) errors.push("Le prénom est requis");
+  if (!this.customerInfo.lastName.trim())  errors.push("Le nom est requis");
+  if (!this.customerInfo.phone.trim())     errors.push("Le téléphone est requis");
+  else if (!/^[0-9\s+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
+    errors.push("Numéro de téléphone invalide");
 
-    if (errors.length > 0) {
-      this.customerFormErrors = errors;
-      this.render(); this.attachDOMEvents(); return;
-    }
-
-    this.showCustomerForm = false;
-    this.loading = true;
-    this.error = "";
-    this.render(); this.attachDOMEvents();
-
-    try {
-      const creds = await this.getCredentials();
-      if (!creds) {
-        this.loading = false; this.render(); this.attachDOMEvents(); return;
-      }
-
-      const id_order  = generateOrderId();
-      this.paymentId  = id_order;
-      const amount    = this.effectiveAmount;
-      const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
-
-      // Appel via le proxy CORS (pas directement api.mips.mu)
-      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
-        method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Accept":        "application/json",
-          "Authorization": `Basic ${basicAuth}`,
-        },
-        body: JSON.stringify({
-          authentify: {
-            id_merchant:      creds.id_merchant,
-            id_entity:        creds.id_entity,
-            id_operator:      creds.id_operator,
-            operator_password: creds.operator_password,
-          },
-          order: { id_order, currency: this.currency, amount },
-          request_mode: this.requestMode,
-          touchpoint: "web",
-          iframe_behavior: {
-            custom_redirection_url: `${window.location.origin}/thank-you-page`,
-            language: "FR",
-          },
-          additional_params: [
-            { param_name: "first_name",   param_value: this.customerInfo.firstName.trim() },
-            { param_name: "last_name",    param_value: this.customerInfo.lastName.trim() },
-            { param_name: "phone_number", param_value: this.customerInfo.phone.trim() },
-            { param_name: "client_email", param_value: this.customerInfo.email.trim() },
-          ],
-        }),
-      });
-
-      const raw = await res.text();
-      let mipsData: any;
-      try { mipsData = JSON.parse(raw); }
-      catch { throw new Error("Réponse invalide du proxy MiPS"); }
-
-      const opStatus        = mipsData.answer?.operation_status || mipsData.operation_status;
-      const paymentZoneData = mipsData.answer?.payment_zone_data || null;
-
-      if (opStatus !== "success") {
-        throw new Error(mipsData.answer?.message || "Erreur création paiement MiPS");
-      }
-      if (!paymentZoneData) throw new Error("Aucune zone de paiement retournée");
-
-      // Extraire src de l'iframe ou créer un blob
-      const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-      this.iframeUrl = iframeMatch?.[1]
-        || URL.createObjectURL(new Blob([paymentZoneData], { type: "text/html" }));
-      this.showIframe = true;
-      this.error = "";
-
-    } catch (err: any) {
-      this.error = err.message || "Erreur réseau";
-    }
-
-    this.loading = false;
-    this.render(); this.attachDOMEvents();
+  if (errors.length > 0) {
+    this.customerFormErrors = errors;
+    this.render(); 
+    this.attachDOMEvents(); 
+    return;
   }
 
+  this.showCustomerForm = false;
+  this.loading = true;
+  this.error = "";
+  this.render(); 
+  this.attachDOMEvents();
+
+  try {
+    const creds = await this.getCredentials();
+    if (!creds) {
+      this.loading = false; 
+      this.render(); 
+      this.attachDOMEvents(); 
+      return;
+    }
+
+    const id_order = generateOrderId();
+    this.paymentId = id_order;
+    const amount = this.effectiveAmount;
+    const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
+
+    // Appel via le proxy CORS
+    const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "Authorization": `Basic ${basicAuth}`,
+      },
+      body: JSON.stringify({
+        authentify: {
+          id_merchant:      creds.id_merchant,
+          id_entity:        creds.id_entity,
+          id_operator:      creds.id_operator,
+          operator_password: creds.operator_password,
+        },
+        order: { id_order, currency: this.currency, amount },
+        request_mode: this.requestMode,
+        touchpoint: "web",
+        iframe_behavior: {
+          custom_redirection_url: `${window.location.origin}/thank-you-page`,
+          language: "FR",
+        },
+        additional_params: [
+          { param_name: "first_name",   param_value: this.customerInfo.firstName.trim() },
+          { param_name: "last_name",    param_value: this.customerInfo.lastName.trim() },
+          { param_name: "phone_number", param_value: this.customerInfo.phone.trim() },
+          { param_name: "client_email", param_value: this.customerInfo.email.trim() },
+        ],
+      }),
+    });
+
+    const raw = await res.text();
+    
+    // Gestion améliorée des réponses non-JSON
+    let mipsData: any;
+    try {
+      mipsData = JSON.parse(raw);
+    } catch (e) {
+      console.error("Réponse non-JSON reçue:", raw.substring(0, 500));
+      
+      // Si la réponse contient du HTML (iframe), on le traite directement
+      if (raw.includes('<iframe') || raw.includes('payment_zone')) {
+        // Considérer que c'est une réponse HTML valide de MiPS
+        const iframeMatch = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+        if (iframeMatch?.[1]) {
+          this.iframeUrl = iframeMatch[1];
+          this.showIframe = true;
+          this.error = "";
+          this.loading = false;
+          this.render();
+          this.attachDOMEvents();
+          return;
+        }
+      }
+      
+      throw new Error(`Le serveur a retourné une réponse invalide (${res.status})`);
+    }
+
+    // Vérification du statut HTTP
+    if (!res.ok) {
+      const errorMsg = mipsData.answer?.message || mipsData.message || `Erreur HTTP ${res.status}`;
+      throw new Error(errorMsg);
+    }
+
+    const opStatus = mipsData.answer?.operation_status || mipsData.operation_status;
+    const paymentZoneData = mipsData.answer?.payment_zone_data || mipsData.payment_zone_data;
+
+    if (opStatus !== "success") {
+      throw new Error(mipsData.answer?.message || "Erreur création paiement MiPS");
+    }
+    
+    if (!paymentZoneData) {
+      throw new Error("Aucune zone de paiement retournée");
+    }
+
+    // Extraire src de l'iframe ou créer un blob
+    const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+    this.iframeUrl = iframeMatch?.[1] || URL.createObjectURL(
+      new Blob([paymentZoneData], { type: "text/html" })
+    );
+    this.showIframe = true;
+    this.error = "";
+
+  } catch (err: any) {
+    console.error("Erreur paiement:", err);
+    this.error = err.message || "Erreur réseau. Vérifiez vos identifiants MiPS.";
+  }
+
+  this.loading = false;
+  this.render(); 
+  this.attachDOMEvents();
+}
   private getDisplayAmount(): string {
     const amt = this.effectiveAmount;
     return amt > 0 ? `${amt.toFixed(2)} ${this.currency}` : `-- ${this.currency}`;
