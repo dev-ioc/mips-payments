@@ -77,7 +77,7 @@ class MipsPay extends HTMLElement {
   };
 
   private showIframe = false;
-  private iframeHtml = "";
+  private iframeUrl = "";
   private paymentId = "";
 
   constructor() {
@@ -86,12 +86,10 @@ class MipsPay extends HTMLElement {
   }
 
   connectedCallback() {
-    // Rendu immédiat sans aucun fetch — widget visible dans l'éditeur
     this.dynamicAmount = this.fixedAmount;
     this.render();
     this.attachDOMEvents();
 
-    // Chargement asynchrone uniquement en dehors de l'éditeur
     if (!this.isEditorContext()) {
       this.updateDynamicAmount().then(() => {
         this.render();
@@ -322,6 +320,36 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
+  // Méthode utilitaire pour échapper le HTML
+  private escapeHtml(str: string): string {
+    if (!str) return "";
+    return str
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
+  // Extraire l'URL de l'iframe depuis le HTML retourné par MiPS
+  private extractIframeUrl(html: string): string | null {
+    // Chercher une balise iframe avec src
+    const iframeRegex = /<iframe[^>]+src=["']([^"']+)["']/i;
+    const match = html.match(iframeRegex);
+    if (match && match[1]) {
+      return match[1];
+    }
+
+    // Chercher un formulaire avec action
+    const formRegex = /<form[^>]+action=["']([^"']+)["']/i;
+    const formMatch = html.match(formRegex);
+    if (formMatch && formMatch[1]) {
+      return formMatch[1];
+    }
+
+    return null;
+  }
+
   private async processPayment() {
     const errors: string[] = [];
     if (!this.customerInfo.firstName.trim())
@@ -399,19 +427,21 @@ class MipsPay extends HTMLElement {
         ],
       };
 
+      console.log("MiPS Payload:", mipsPayload);
+
       const res = await fetch("https://api.mips.mu/api/load_payment_zone", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
           Authorization: `Basic ${basicAuth}`,
-          "user-agent":
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         },
         body: JSON.stringify(mipsPayload),
       });
 
       const raw = await res.text();
+      console.log("MiPS Response:", raw);
+
       let mipsData: any;
       try {
         mipsData = JSON.parse(raw);
@@ -430,13 +460,25 @@ class MipsPay extends HTMLElement {
       }
 
       if (paymentZoneData) {
-        this.iframeHtml = paymentZoneData;
-        this.showIframe = true;
-        this.error = "";
+        // Extraire l'URL de l'iframe depuis le HTML retourné
+        const iframeUrl = this.extractIframeUrl(paymentZoneData);
+
+        if (iframeUrl) {
+          this.iframeUrl = iframeUrl;
+          this.showIframe = true;
+          this.error = "";
+        } else {
+          // Si pas d'URL trouvée, créer un blob avec le HTML
+          const blob = new Blob([paymentZoneData], { type: "text/html" });
+          this.iframeUrl = URL.createObjectURL(blob);
+          this.showIframe = true;
+          this.error = "";
+        }
       } else {
         throw new Error("Aucune zone de paiement retournée par MiPS");
       }
     } catch (err: any) {
+      console.error("MiPS Error:", err);
       this.error = err.message || "Erreur réseau";
     }
 
@@ -479,50 +521,92 @@ class MipsPay extends HTMLElement {
     }
 
     const confirmBtn = this.shadow.getElementById("mips-confirm-pay");
-    if (confirmBtn)
-      confirmBtn.addEventListener("click", () => this.processPayment());
+    if (confirmBtn) {
+      const newConfirmBtn = confirmBtn.cloneNode(true);
+      confirmBtn.parentNode?.replaceChild(newConfirmBtn, confirmBtn);
+      newConfirmBtn.addEventListener("click", () => this.processPayment());
+    }
 
     ["mips-cancel-form", "mips-cancel-form-2"].forEach((id) => {
       const el = this.shadow.getElementById(id);
-      if (el)
-        el.addEventListener("click", () => {
+      if (el) {
+        const newEl = el.cloneNode(true);
+        el.parentNode?.replaceChild(newEl, el);
+        newEl.addEventListener("click", () => {
           this.showCustomerForm = false;
           this.customerFormErrors = [];
           this.render();
           this.attachDOMEvents();
         });
+      }
     });
 
     const closeBtn = this.shadow.getElementById("mips-iframe-close");
-    if (closeBtn)
-      closeBtn.addEventListener("click", () => {
+    if (closeBtn) {
+      const newCloseBtn = closeBtn.cloneNode(true);
+      closeBtn.parentNode?.replaceChild(newCloseBtn, closeBtn);
+      newCloseBtn.addEventListener("click", () => {
         this.showIframe = false;
-        this.iframeHtml = "";
+        this.iframeUrl = "";
         this.render();
         this.attachDOMEvents();
       });
+    }
 
+    // Écouter les messages de l'iframe MiPS
     window.addEventListener("message", (ev) => {
+      // Vérifier l'origine pour la sécurité
+      const allowedOrigins = [
+        "https://api.mips.mu",
+        "https://mips.mu",
+        "https://mips-payments.pages.dev",
+      ];
+      if (
+        ev.origin &&
+        allowedOrigins.some((o) => ev.origin.includes(o) || ev.origin === o)
+      ) {
+        if (
+          ev.data?.status === "completed" ||
+          ev.data?.payment_status === "success"
+        ) {
+          this.handlePaymentSuccess();
+        } else if (
+          ev.data?.status === "failed" ||
+          ev.data?.payment_status === "failed"
+        ) {
+          this.handlePaymentFailed();
+        }
+      }
+
+      // Types existants
       if (
         ev.data?.type === "mips_payment_success" ||
         ev.data?.payment_status === "success"
-      )
+      ) {
         this.handlePaymentSuccess();
+      }
       if (
         ev.data?.type === "mips_payment_failed" ||
         ev.data?.payment_status === "failed"
-      )
+      ) {
         this.handlePaymentFailed();
+      }
     });
   }
 
   private handlePaymentSuccess() {
     this.showIframe = false;
-    this.iframeHtml = "";
+    this.iframeUrl = "";
     this.error = "";
+
+    // Nettoyer les blobs URL si nécessaire
+    if (this.iframeUrl && this.iframeUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(this.iframeUrl);
+    }
+
     const successDiv = document.createElement("div");
     successDiv.style.cssText =
-      "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;";
+      "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
     successDiv.innerHTML = `
       <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;font-family:system-ui;">
         <div style="font-size:48px;color:#16a34a;">✓</div>
@@ -535,12 +619,17 @@ class MipsPay extends HTMLElement {
         </button>
       </div>`;
     document.body.appendChild(successDiv);
+
     this.render();
     this.attachDOMEvents();
   }
 
   private handlePaymentFailed() {
     this.showIframe = false;
+    if (this.iframeUrl && this.iframeUrl.startsWith("blob:")) {
+      URL.revokeObjectURL(this.iframeUrl);
+    }
+    this.iframeUrl = "";
     this.error = "Le paiement a échoué. Veuillez réessayer.";
     this.render();
     this.attachDOMEvents();
@@ -710,8 +799,14 @@ class MipsPay extends HTMLElement {
           transition: background 0.2s;
         }
         .iframe-close:hover { background: #CBD5E1; }
-        .iframe-body { flex: 1; overflow: auto; min-height: 480px; }
-        .iframe-body iframe { width: 100%; height: 100%; border: none; min-height: 480px; display: block; }
+        .iframe-body { flex: 1; overflow: auto; min-height: 500px; background: #fff; }
+        .iframe-body iframe { 
+          width: 100%; 
+          height: 500px; 
+          border: none; 
+          display: block;
+          background: #fff;
+        }
       </style>
 
       <div class="wrapper">
@@ -773,7 +868,7 @@ class MipsPay extends HTMLElement {
       }
 
       ${
-        this.showIframe
+        this.showIframe && this.iframeUrl
           ? `
         <div class="iframe-overlay">
           <div class="iframe-container">
@@ -782,11 +877,11 @@ class MipsPay extends HTMLElement {
               <button id="mips-iframe-close" class="iframe-close" title="Fermer">✕</button>
             </div>
             <div class="iframe-body">
-              ${
-                this.iframeHtml
-                  ? this.iframeHtml
-                  : `<div style="padding:40px;text-align:center;color:#94A3B8;font-family:system-ui">Chargement...</div>`
-              }
+              <iframe src="${this.iframeUrl}" 
+                      title="Formulaire de paiement sécurisé MiPS"
+                      allow="payment *"
+                      sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation">
+              </iframe>
             </div>
           </div>
         </div>`
