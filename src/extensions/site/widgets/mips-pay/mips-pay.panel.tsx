@@ -1,6 +1,3 @@
-// src/extensions/site/widgets/mips-pay/mips-pay.panel.tsx
-// Panel de configuration MiPS — credentials chiffrés AES-256-GCM, stockés comme prop Wix
-
 import React, {
   type FC,
   useState,
@@ -25,11 +22,9 @@ import {
   IconButton,
 } from "@wix/design-system";
 import "@wix/design-system/styles.global.css";
+import { DeleteIcon, Key, Settings } from "lucide-react";
 
-// ─── Clé de dérivation — IDENTIQUE à mips-pay.tsx ────────────────────────────
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
-
-// ─── Crypto helpers ───────────────────────────────────────────────────────────
 async function deriveKey(passphrase: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -83,7 +78,6 @@ async function decryptCredentials(
   return JSON.parse(new TextDecoder().decode(decrypted));
 }
 
-// ─── Types ────────────────────────────────────────────────────────────────────
 interface CredentialsForm {
   id_merchant: string;
   id_entity: string;
@@ -115,8 +109,6 @@ const EMPTY_CREDS: CredentialsForm = {
   auth_basic_username: "",
   auth_basic_password: "",
 };
-
-// ─── Options dropdowns ────────────────────────────────────────────────────────
 const CURRENCY_OPTIONS = [
   { id: "MUR", value: "MUR — Roupie mauricienne" },
   { id: "USD", value: "USD — Dollar américain" },
@@ -139,7 +131,6 @@ const AMOUNT_SOURCE_OPTIONS = [
   { id: "selector", value: "Sélecteur CSS" },
 ];
 
-// ─── Champ credentials avec toggle visibilité ─────────────────────────────────
 const SecureInput: FC<{
   label: string;
   value: string;
@@ -183,7 +174,6 @@ const SecureInput: FC<{
   );
 };
 
-// ─── Panel principal ──────────────────────────────────────────────────────────
 const Panel: FC = () => {
   const [config, setConfig] = useState<WidgetConfig>({
     "button-text": "Payer avec MiPS",
@@ -205,7 +195,6 @@ const Panel: FC = () => {
   const [credsMessage, setCredsMessage] = useState("");
   const [loadingConfig, setLoadingConfig] = useState(true);
 
-  // ── Chargement initial ──────────────────────────────────────────────────────
   useEffect(() => {
     loadAll();
   }, []);
@@ -230,8 +219,6 @@ const Panel: FC = () => {
         if (v && v !== "undefined" && v !== "null") loaded[k] = v;
       });
       setConfig((prev) => ({ ...prev, ...loaded }));
-
-      // Charger les credentials chiffrés
       const encrypted = await widget.getProp("encrypted-credentials");
       if (
         encrypted &&
@@ -240,7 +227,6 @@ const Panel: FC = () => {
         encrypted !== ""
       ) {
         setCredsSaved(true);
-        // Déchiffrer pour pré-remplir le formulaire
         try {
           const dec = await decryptCredentials(encrypted);
           setCreds({
@@ -254,7 +240,6 @@ const Panel: FC = () => {
             auth_basic_password: dec.auth_basic_password || "",
           });
         } catch {
-          // Credentials existants mais ne peuvent pas être déchiffrés (changement de passphrase?)
           setCredsSaved(true);
         }
       }
@@ -264,8 +249,6 @@ const Panel: FC = () => {
       setLoadingConfig(false);
     }
   };
-
-  // ── Mise à jour prop widget ─────────────────────────────────────────────────
   const updateProp = useCallback(
     async <K extends keyof WidgetConfig>(key: K, value: string) => {
       setConfig((prev) => ({ ...prev, [key]: value }));
@@ -281,10 +264,7 @@ const Panel: FC = () => {
   const updateCred = (key: keyof CredentialsForm, value: string) => {
     setCreds((prev) => ({ ...prev, [key]: value }));
   };
-
-  // ── Sauvegarde credentials chiffrés ────────────────────────────────────────
   const handleSaveCredentials = async () => {
-    // Validation champs obligatoires
     const required: (keyof CredentialsForm)[] = [
       "id_merchant",
       "id_entity",
@@ -378,27 +358,23 @@ const Panel: FC = () => {
     <WixDesignSystemProvider>
       <SidePanel width="300" height="100vh">
         <SidePanel.Content noPadding stretchVertically>
-          {/* ─── Titre ─── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              ⚙ Configuration MiPS
+              <Settings size={20}/> Configuration MiPS
             </Text>
           </SidePanel.Field>
 
           <Divider />
-
-          {/* ─── Section Credentials ─── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              🔐 Credentials MiPS
+              <Key size={20} /> Credentials MiPS
             </Text>
           </SidePanel.Field>
 
-          {/* Statut credentials */}
           {credsSaved && !showCredsForm && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="success">
-                ✓ Credentials configurés et chiffrés (AES-256-GCM)
+                Credentials configurés et chiffrés (AES-256-GCM)
               </SectionHelper>
             </SidePanel.Field>
           )}
@@ -406,12 +382,10 @@ const Panel: FC = () => {
           {!credsSaved && !showCredsForm && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="warning">
-                ⚠ Aucun credential. Le bouton de paiement sera inactif.
+                Aucun credential. Le bouton de paiement sera inactif.
               </SectionHelper>
             </SidePanel.Field>
           )}
-
-          {/* Boutons gestion credentials */}
           {!showCredsForm && (
             <SidePanel.Field>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -420,7 +394,7 @@ const Panel: FC = () => {
                   priority={credsSaved ? "secondary" : "primary"}
                   onClick={() => setShowCredsForm(true)}
                 >
-                  {credsSaved ? "✏ Modifier" : "➕ Configurer"}
+                  {credsSaved ? "Modifier" : "Configurer"}
                 </Button>
                 {credsSaved && (
                   <Button
@@ -429,14 +403,12 @@ const Panel: FC = () => {
                     skin="destructive"
                     onClick={handleDeleteCredentials}
                   >
-                    🗑 Supprimer
+                    <DeleteIcon size={20} /> Supprimer
                   </Button>
                 )}
               </div>
             </SidePanel.Field>
           )}
-
-          {/* Feedback sauvegarde */}
           {credsStatus === "success" && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="success">
@@ -451,18 +423,14 @@ const Panel: FC = () => {
               </SectionHelper>
             </SidePanel.Field>
           )}
-
-          {/* Formulaire credentials */}
           {showCredsForm && (
             <>
               <SidePanel.Field>
                 <SectionHelper fullWidth appearance="standard">
-                  🔒 Les credentials sont chiffrés avec AES-256-GCM avant
+                  Les credentials sont chiffrés avec AES-256-GCM avant
                   stockage. Ils ne quittent jamais votre navigateur en clair.
                 </SectionHelper>
               </SidePanel.Field>
-
-              {/* Identifiants MiPS */}
               <SidePanel.Field>
                 <Text size="tiny" secondary>
                   — Identifiants MiPS —
@@ -500,12 +468,11 @@ const Panel: FC = () => {
                 label="Mot de passe Opérateur"
                 value={creds.operator_password}
                 onChange={(v) => updateCred("operator_password", v)}
-                placeholder="••••••••"
+                placeholder="••••••••••••••••••••••••"
                 required
                 hint="operator_password fourni par MiPS"
               />
 
-              {/* Auth Basic */}
               <SidePanel.Field>
                 <Text size="tiny" secondary>
                   — Authentification Basic —
@@ -530,7 +497,6 @@ const Panel: FC = () => {
                 hint="Mot de passe pour l'authentification HTTP Basic Auth"
               />
 
-              {/* IMN (callbacks) */}
               <SidePanel.Field>
                 <Text size="tiny" secondary>
                   — Callbacks IMN (optionnel) —
@@ -552,8 +518,6 @@ const Panel: FC = () => {
                 placeholder="cipher key IMN"
                 hint="Clé utilisée pour déchiffrer les callbacks IMN"
               />
-
-              {/* Boutons formulaire */}
               <SidePanel.Field>
                 <div style={{ display: "flex", gap: "8px" }}>
                   <Button
@@ -564,7 +528,7 @@ const Panel: FC = () => {
                     {savingCreds ? (
                       <Loader size="tiny" />
                     ) : (
-                      "🔒 Chiffrer & Sauvegarder"
+                      "Sauvegarder"
                     )}
                   </Button>
                   <Button
@@ -591,11 +555,9 @@ const Panel: FC = () => {
           )}
 
           <Divider />
-
-          {/* ─── Apparence ─── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              🎨 Apparence
+              Apparence
             </Text>
           </SidePanel.Field>
 
@@ -622,10 +584,9 @@ const Panel: FC = () => {
 
           <Divider />
 
-          {/* ─── Paiement ─── */}
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              💳 Paiement
+              Paiement
             </Text>
           </SidePanel.Field>
 
@@ -694,11 +655,9 @@ const Panel: FC = () => {
             </FormField>
           </SidePanel.Field>
         </SidePanel.Content>
-
-        {/* ─── Footer ─── */}
         <SidePanel.Footer noPadding>
           <SectionHelper fullWidth appearance="warning" border="topBottom">
-            🔐 Chiffrement AES-256-GCM. Vos credentials ne sont jamais envoyés à
+            Chiffrement AES-256-GCM. Vos credentials ne sont jamais envoyés à
             un serveur tiers — ils sont déchiffrés uniquement dans le navigateur
             de l'acheteur au moment du paiement.
           </SectionHelper>

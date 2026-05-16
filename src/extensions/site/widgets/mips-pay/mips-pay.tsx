@@ -1,4 +1,3 @@
-// src/extensions/site/widgets/mips-pay/mips-pay.tsx
 const MIPS_PROXY = "https://mips-payments-proxy.dev-mdg.workers.dev";
 
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
@@ -27,7 +26,6 @@ function generateOrderId(): string {
   return `WIX${Date.now().toString().slice(-10)}${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
-// ─── Web Component ────────────────────────────────────────────────────────────
 class MipsPay extends HTMLElement {
   static get observedAttributes() {
     return [
@@ -57,15 +55,12 @@ class MipsPay extends HTMLElement {
     super();
     this.shadow = this.attachShadow({ mode: "open" });
   }
-
-  // ── Montant effectif ─────────────────────────────────────────────────────────
   private get effectiveAmount(): number {
     if (this._veloAmount > 0) return this._veloAmount;
     if (this._cartAmount > 0) return this._cartAmount;
     return this.fixedAmount;
   }
 
-  // ── Getters ──────────────────────────────────────────────────────────────────
   private get buttonText()           { return this.getAttribute("button-text")           || "Payer avec MiPS"; }
   private get buttonColor()          { return this.getAttribute("button-color")          || "#2563EB"; }
   private get fixedAmount()          { return parseFloat(this.getAttribute("amount") || "0") || 0; }
@@ -77,7 +72,6 @@ class MipsPay extends HTMLElement {
   private get encryptedCredentials() { return this.getAttribute("encrypted-credentials") || ""; }
   private get hasCredentials()       { return !!this.encryptedCredentials; }
 
-  // ─── Lifecycle ───────────────────────────────────────────────────────────────
   connectedCallback() {
     if (this._initialized) return;
     this._initialized = true;
@@ -95,16 +89,12 @@ class MipsPay extends HTMLElement {
     }
     if (this.isConnected) { this.render(); this.attachDOMEvents(); }
   }
-
-  // Méthode publique alternative (appelable depuis Velo si besoin)
   public setAmount(amount: number) {
     if (!isNaN(amount) && amount >= 0) {
       this._veloAmount = amount;
       this.render(); this.attachDOMEvents();
     }
   }
-
-  // ─── Montant panier ───────────────────────────────────────────────────────────
   private async loadCartAmount(): Promise<void> {
     const { amount } = await this.getWixCartTotal();
     if (amount > 0 && this._veloAmount === 0) {
@@ -170,7 +160,6 @@ class MipsPay extends HTMLElement {
     }
   }
 
-  // ─── Messages ────────────────────────────────────────────────────────────────
   private listenToMessages() {
     window.addEventListener("message", async (ev) => {
       if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0)
@@ -190,15 +179,11 @@ class MipsPay extends HTMLElement {
       ) this.handlePaymentFailed();
     });
   }
-
-  // ─── Credentials ─────────────────────────────────────────────────────────────
   private async getCredentials(): Promise<Record<string, string> | null> {
     if (!this.encryptedCredentials) return null;
     try { return await decryptCredentials(this.encryptedCredentials); }
     catch { this.error = "Erreur de déchiffrement des credentials."; return null; }
   }
-
-  // ─── Paiement ────────────────────────────────────────────────────────────────
   private handlePay() {
     if (!this.hasCredentials) {
       this.error = "Configuration MiPS non configurée.";
@@ -215,7 +200,6 @@ class MipsPay extends HTMLElement {
   }
 
  private async processPayment() {
-  // Validation du formulaire
   const errors: string[] = [];
   if (!this.customerInfo.firstName.trim()) errors.push("Le prénom est requis");
   if (!this.customerInfo.lastName.trim())  errors.push("Le nom est requis");
@@ -249,8 +233,6 @@ class MipsPay extends HTMLElement {
     this.paymentId = id_order;
     const amount = this.effectiveAmount;
     const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
-
-    // Appel via le proxy CORS
     const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
       method: "POST",
       headers: {
@@ -282,17 +264,12 @@ class MipsPay extends HTMLElement {
     });
 
     const raw = await res.text();
-    
-    // Gestion améliorée des réponses non-JSON
     let mipsData: any;
     try {
       mipsData = JSON.parse(raw);
     } catch (e) {
       console.error("Réponse non-JSON reçue:", raw.substring(0, 500));
-      
-      // Si la réponse contient du HTML (iframe), on le traite directement
       if (raw.includes('<iframe') || raw.includes('payment_zone')) {
-        // Considérer que c'est une réponse HTML valide de MiPS
         const iframeMatch = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
         if (iframeMatch?.[1]) {
           this.iframeUrl = iframeMatch[1];
@@ -308,7 +285,6 @@ class MipsPay extends HTMLElement {
       throw new Error(`Le serveur a retourné une réponse invalide (${res.status})`);
     }
 
-    // Vérification du statut HTTP
     if (!res.ok) {
       const errorMsg = mipsData.answer?.message || mipsData.message || `Erreur HTTP ${res.status}`;
       throw new Error(errorMsg);
@@ -325,7 +301,6 @@ class MipsPay extends HTMLElement {
       throw new Error("Aucune zone de paiement retournée");
     }
 
-    // Extraire src de l'iframe ou créer un blob
     const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
     this.iframeUrl = iframeMatch?.[1] || URL.createObjectURL(
       new Blob([paymentZoneData], { type: "text/html" })
@@ -347,7 +322,6 @@ class MipsPay extends HTMLElement {
     return amt > 0 ? `${amt.toFixed(2)} ${this.currency}` : `-- ${this.currency}`;
   }
 
-  // ─── Events DOM ───────────────────────────────────────────────────────────────
   private attachDOMEvents() {
     const replace = (id: string, fn: () => void) => {
       const el = this.shadow.getElementById(id);
@@ -412,15 +386,13 @@ class MipsPay extends HTMLElement {
     this.error = "Le paiement a échoué. Veuillez réessayer.";
     this.render(); this.attachDOMEvents();
   }
-
-  // ─── Rendu ────────────────────────────────────────────────────────────────────
   render() {
     const displayAmount = this.getDisplayAmount();
     const color   = this.buttonColor;
     const isReady = this.hasCredentials;
 
     const btnLabel = this.loading
-      ? "⏳ Traitement en cours..."
+      ? "Traitement en cours..."
       : this.effectiveAmount > 0
         ? `${this.buttonText} — ${displayAmount}`
         : this.buttonText;
