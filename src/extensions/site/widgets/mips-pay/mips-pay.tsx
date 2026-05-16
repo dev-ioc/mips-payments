@@ -1,10 +1,7 @@
 // src/extensions/site/widgets/mips-pay/mips-pay.tsx
-// Widget MiPS Payment — sans backend, credentials chiffrés dans les attributs Wix
-
-// ─── Clé de dérivation (doit être identique dans panel.tsx) ───────────────────
+// ─── Clé de dérivation partagée avec panel.tsx ───────────────────────────────
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
-// ─── Utilitaires crypto (Web Crypto API natif) ────────────────────────────────
 async function deriveKey(passphrase: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -28,21 +25,6 @@ async function deriveKey(passphrase: string): Promise<CryptoKey> {
   );
 }
 
-async function encryptCredentials(data: object): Promise<string> {
-  const key = await deriveKey(DERIVE_PASSPHRASE);
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const enc = new TextEncoder();
-  const encrypted = await crypto.subtle.encrypt(
-    { name: "AES-GCM", iv },
-    key,
-    enc.encode(JSON.stringify(data)),
-  );
-  const combined = new Uint8Array(iv.byteLength + encrypted.byteLength);
-  combined.set(iv, 0);
-  combined.set(new Uint8Array(encrypted), iv.byteLength);
-  return btoa(String.fromCharCode(...combined));
-}
-
 async function decryptCredentials(
   ciphertext: string,
 ): Promise<Record<string, string>> {
@@ -58,7 +40,6 @@ async function decryptCredentials(
   return JSON.parse(new TextDecoder().decode(decrypted));
 }
 
-// ─── Génération d'un id_order unique ──────────────────────────────────────────
 function generateOrderId(): string {
   const ts = Date.now().toString().slice(-10);
   const rand = Math.random().toString(36).substring(2, 8).toUpperCase();
@@ -69,7 +50,6 @@ function generateOrderId(): string {
 class MipsPay extends HTMLElement {
   static get observedAttributes() {
     return [
-      "public-key",
       "button-text",
       "button-color",
       "amount",
@@ -86,11 +66,15 @@ class MipsPay extends HTMLElement {
   private loading = false;
   private error = "";
   private dynamicAmount = 0;
-  private credentialsReady = false;
 
   private showCustomerForm = false;
   private customerFormErrors: string[] = [];
-  private customerInfo = { firstName: "", lastName: "", phone: "", email: "" };
+  private customerInfo = {
+    firstName: "",
+    lastName: "",
+    phone: "",
+    email: "",
+  };
 
   private showIframe = false;
   private iframeHtml = "";
@@ -101,24 +85,33 @@ class MipsPay extends HTMLElement {
     this.shadow = this.attachShadow({ mode: "open" });
   }
 
-  async connectedCallback() {
-    this.credentialsReady = !!this.encryptedCredentials;
+  connectedCallback() {
+    // Rendu immédiat sans aucun fetch — widget visible dans l'éditeur
+    this.dynamicAmount = this.fixedAmount;
     this.render();
-    this.attachEvents();
-    await this.updateDynamicAmount();
-    this.listenToCartChanges();
+    this.attachDOMEvents();
+
+    // Chargement asynchrone uniquement en dehors de l'éditeur
+    if (!this.isEditorContext()) {
+      this.updateDynamicAmount().then(() => {
+        this.render();
+        this.attachDOMEvents();
+        this.listenToCartChanges();
+      });
+    }
   }
 
   attributeChangedCallback(name: string, _old: string, newVal: string) {
-    if (name === "encrypted-credentials" && newVal) {
-      this.credentialsReady = true;
-    }
     if (name === "amount" && newVal) {
       const p = parseFloat(newVal);
-      if (!isNaN(p) && p > 0) this.dynamicAmount = p;
+      if (!isNaN(p) && p > 0 && this.dynamicAmount === 0) {
+        this.dynamicAmount = p;
+      }
     }
-    this.render();
-    this.attachEvents();
+    if (this.isConnected) {
+      this.render();
+      this.attachDOMEvents();
+    }
   }
 
   // ── Getters ─────────────────────────────────────────────────────────────────
@@ -149,8 +142,29 @@ class MipsPay extends HTMLElement {
   private get encryptedCredentials() {
     return this.getAttribute("encrypted-credentials") || "";
   }
+  private get hasCredentials() {
+    return !!this.encryptedCredentials;
+  }
 
-  // ── Déchiffrement des credentials au moment du paiement ─────────────────────
+  // ─── Détection contexte éditeur Wix ─────────────────────────────────────────
+  private isEditorContext(): boolean {
+    try {
+      const w = window as any;
+      if (w.__WIX_EDITOR__ || w.wixEditor) return true;
+      const host = window.location.hostname;
+      if (
+        host.includes("editor.wix.com") ||
+        host.includes("wix-dev-center-test") ||
+        host.includes("editorx.com")
+      )
+        return true;
+      return false;
+    } catch {
+      return false;
+    }
+  }
+
+  // ── Déchiffrement credentials ────────────────────────────────────────────────
   private async getCredentials(): Promise<Record<string, string> | null> {
     if (!this.encryptedCredentials) return null;
     try {
@@ -163,16 +177,18 @@ class MipsPay extends HTMLElement {
 
   // ── Montant dynamique ────────────────────────────────────────────────────────
   private async updateDynamicAmount(): Promise<void> {
+    if (this.amountSource === "fixed" || !this.amountSource) {
+      this.dynamicAmount = this.fixedAmount;
+      return;
+    }
+    if (this.amountSource === "selector") {
+      this.dynamicAmount = this.getAmountFromSelector() || this.fixedAmount;
+      return;
+    }
     if (this.amountSource === "cart") {
       const { amount } = await this.getWixCartTotal();
       this.dynamicAmount = amount > 0 ? amount : this.fixedAmount;
-    } else if (this.amountSource === "selector") {
-      this.dynamicAmount = this.getAmountFromSelector() || this.fixedAmount;
-    } else {
-      this.dynamicAmount = this.fixedAmount;
     }
-    this.render();
-    this.attachEvents();
   }
 
   private isInCrossOriginFrame(): boolean {
@@ -249,7 +265,8 @@ class MipsPay extends HTMLElement {
           if (!isNaN(amount) && amount > 0) return { amount };
         }
       }
-      return { amount: this.fixedAmount };
+      const cartAmount = await this.getAmountViaPostMessage();
+      return { amount: cartAmount > 0 ? cartAmount : this.fixedAmount };
     } catch {
       return { amount: this.fixedAmount };
     }
@@ -274,40 +291,35 @@ class MipsPay extends HTMLElement {
 
   private listenToCartChanges() {
     window.addEventListener("message", async (ev) => {
-      if (ev.data?.type === "wixCartUpdated") await this.updateDynamicAmount();
+      if (ev.data?.type === "wixCartUpdated") {
+        await this.updateDynamicAmount();
+        this.render();
+        this.attachDOMEvents();
+      }
     });
-    if (!this.isInCrossOriginFrame() && this.amountSource !== "fixed") {
-      new MutationObserver(
-        async () => await this.updateDynamicAmount(),
-      ).observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ["data-total"],
-      });
-    }
   }
 
-  // ── Gestion du bouton payer ──────────────────────────────────────────────────
+  // ── Gestion paiement ─────────────────────────────────────────────────────────
   private handlePay() {
-    if (!this.credentialsReady) {
+    if (this.isEditorContext()) return;
+    if (!this.hasCredentials) {
       this.error =
-        "Configuration MiPS non chargée. Veuillez contacter l'administrateur.";
+        "Configuration MiPS non configurée. Contactez l'administrateur du site.";
       this.render();
-      this.attachEvents();
+      this.attachDOMEvents();
       return;
     }
     if (!this.dynamicAmount || this.dynamicAmount <= 0) {
       this.error = "Montant invalide ou panier vide.";
       this.render();
-      this.attachEvents();
+      this.attachDOMEvents();
       return;
     }
     this.error = "";
     this.showCustomerForm = true;
     this.customerFormErrors = [];
     this.render();
-    this.attachEvents();
+    this.attachDOMEvents();
   }
 
   private async processPayment() {
@@ -322,7 +334,7 @@ class MipsPay extends HTMLElement {
     if (errors.length > 0) {
       this.customerFormErrors = errors;
       this.render();
-      this.attachEvents();
+      this.attachDOMEvents();
       return;
     }
 
@@ -330,16 +342,15 @@ class MipsPay extends HTMLElement {
     this.loading = true;
     this.error = "";
     this.render();
-    this.attachEvents();
+    this.attachDOMEvents();
 
     try {
-      // 1. Déchiffrer les credentials
       const creds = await this.getCredentials();
       if (!creds) {
         this.error = "Impossible de charger les credentials MiPS.";
         this.loading = false;
         this.render();
-        this.attachEvents();
+        this.attachDOMEvents();
         return;
       }
 
@@ -350,7 +361,6 @@ class MipsPay extends HTMLElement {
         `${creds.auth_basic_username}:${creds.auth_basic_password}`,
       );
 
-      // 2. Appel direct à l'API MiPS load_payment_zone
       const mipsPayload = {
         authentify: {
           id_merchant: creds.id_merchant,
@@ -432,15 +442,16 @@ class MipsPay extends HTMLElement {
 
     this.loading = false;
     this.render();
-    this.attachEvents();
+    this.attachDOMEvents();
   }
 
   private getDisplayAmount(): string {
-    return `${(this.dynamicAmount || this.fixedAmount).toFixed(2)} ${this.currency}`;
+    const amt = this.dynamicAmount > 0 ? this.dynamicAmount : this.fixedAmount;
+    return amt > 0 ? `${amt.toFixed(2)} ${this.currency}` : this.currency;
   }
 
-  // ── Rendu & Events ───────────────────────────────────────────────────────────
-  private attachEvents() {
+  // ── Events ───────────────────────────────────────────────────────────────────
+  private attachDOMEvents() {
     const btn = this.shadow.getElementById("mips-pay-btn");
     if (btn) {
       const newBtn = btn.cloneNode(true);
@@ -451,13 +462,13 @@ class MipsPay extends HTMLElement {
       });
     }
 
-    const ids: Array<[string, keyof typeof this.customerInfo]> = [
+    const fields: Array<[string, keyof typeof this.customerInfo]> = [
       ["mips-firstname", "firstName"],
       ["mips-lastname", "lastName"],
       ["mips-phone", "phone"],
       ["mips-email", "email"],
     ];
-    for (const [id, key] of ids) {
+    for (const [id, key] of fields) {
       const el = this.shadow.getElementById(id) as HTMLInputElement | null;
       if (el) {
         el.value = this.customerInfo[key];
@@ -471,37 +482,37 @@ class MipsPay extends HTMLElement {
     if (confirmBtn)
       confirmBtn.addEventListener("click", () => this.processPayment());
 
-    const cancelBtn = this.shadow.getElementById("mips-cancel-form");
-    if (cancelBtn)
-      cancelBtn.addEventListener("click", () => {
-        this.showCustomerForm = false;
-        this.customerFormErrors = [];
-        this.render();
-        this.attachEvents();
-      });
+    ["mips-cancel-form", "mips-cancel-form-2"].forEach((id) => {
+      const el = this.shadow.getElementById(id);
+      if (el)
+        el.addEventListener("click", () => {
+          this.showCustomerForm = false;
+          this.customerFormErrors = [];
+          this.render();
+          this.attachDOMEvents();
+        });
+    });
 
-    const closeIframeBtn = this.shadow.getElementById("mips-iframe-close");
-    if (closeIframeBtn)
-      closeIframeBtn.addEventListener("click", () => {
+    const closeBtn = this.shadow.getElementById("mips-iframe-close");
+    if (closeBtn)
+      closeBtn.addEventListener("click", () => {
         this.showIframe = false;
         this.iframeHtml = "";
         this.render();
-        this.attachEvents();
+        this.attachDOMEvents();
       });
 
     window.addEventListener("message", (ev) => {
       if (
         ev.data?.type === "mips_payment_success" ||
         ev.data?.payment_status === "success"
-      ) {
+      )
         this.handlePaymentSuccess();
-      }
       if (
         ev.data?.type === "mips_payment_failed" ||
         ev.data?.payment_status === "failed"
-      ) {
+      )
         this.handlePaymentFailed();
-      }
     });
   }
 
@@ -509,96 +520,208 @@ class MipsPay extends HTMLElement {
     this.showIframe = false;
     this.iframeHtml = "";
     this.error = "";
-    this.shadow.innerHTML += `
-      <div style="position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;
-        align-items:center;justify-content:center;z-index:9999;">
-        <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;">
-          <div style="font-size:48px;color:#16a34a;">✓</div>
-          <h2 style="margin:12px 0 8px">Paiement réussi !</h2>
-          <p style="color:#64748B">Votre paiement de ${this.getDisplayAmount()} a été traité avec succès.</p>
-          <p style="font-size:12px;color:#94A3B8">Référence : ${this.paymentId}</p>
-        </div>
+    const successDiv = document.createElement("div");
+    successDiv.style.cssText =
+      "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:9999;";
+    successDiv.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;font-family:system-ui;">
+        <div style="font-size:48px;color:#16a34a;">✓</div>
+        <h2 style="margin:12px 0 8px;color:#1E293B">Paiement réussi !</h2>
+        <p style="color:#64748B">Votre paiement de ${this.getDisplayAmount()} a été traité avec succès.</p>
+        <p style="font-size:12px;color:#94A3B8;margin-top:6px">Référence : ${this.paymentId}</p>
+        <button onclick="this.closest('[style*=fixed]').remove()"
+          style="margin-top:20px;padding:10px 24px;background:#2563EB;color:#fff;border:none;border-radius:8px;cursor:pointer;font-family:system-ui;font-size:14px;">
+          Fermer
+        </button>
       </div>`;
+    document.body.appendChild(successDiv);
+    this.render();
+    this.attachDOMEvents();
   }
 
   private handlePaymentFailed() {
     this.showIframe = false;
     this.error = "Le paiement a échoué. Veuillez réessayer.";
     this.render();
-    this.attachEvents();
+    this.attachDOMEvents();
   }
 
+  // ── Rendu ────────────────────────────────────────────────────────────────────
   render() {
     const displayAmount = this.getDisplayAmount();
     const color = this.buttonColor;
-    const isReady = this.credentialsReady;
+    const isEditor = this.isEditorContext();
+    const isReady = this.hasCredentials;
+
+    const btnLabel = this.loading
+      ? "⏳ Traitement en cours..."
+      : `${this.buttonText}${this.fixedAmount > 0 || this.dynamicAmount > 0 ? ` — ${displayAmount}` : ""}`;
 
     this.shadow.innerHTML = `
       <style>
-        * { box-sizing: border-box; font-family: system-ui, -apple-system, sans-serif; }
-        .container { max-width: 400px; width: 100%; }
-        .error { color:#DC2626; font-size:13px; margin-bottom:8px; padding:12px;
-          background:#FEE2E2; border-radius:6px; text-align:center; }
-        .pay-btn {
-          width:100%; padding:14px; border-radius:10px; border:none;
-          background:${this.loading ? "#93C5FD" : isReady ? color : "#9CA3AF"};
-          color:#fff; font-size:16px; font-weight:700;
-          cursor:${isReady && !this.loading ? "pointer" : "not-allowed"};
-          display:flex; align-items:center; justify-content:center; gap:8px;
-          transition:all 0.2s; opacity:${isReady ? 1 : 0.6};
+        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+        :host {
+          display: block;
+          width: 100%;
+          font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
         }
-        .pay-btn:hover:not(:disabled) { opacity:0.9; transform:translateY(-1px); }
-        .secure-badge { display:flex; align-items:center; justify-content:center;
-          gap:6px; margin-top:8px; font-size:11px; color:#94A3B8; }
-        .overlay { position:fixed; inset:0; background:rgba(0,0,0,0.5);
-          display:flex; align-items:center; justify-content:center; z-index:9999; }
-        .modal { background:#fff; border-radius:16px; padding:28px;
-          max-width:420px; width:90%; position:relative; }
-        .modal-close { position:absolute; top:12px; right:16px; background:none;
-          border:none; font-size:20px; cursor:pointer; color:#64748B; }
-        .modal h2 { margin:0 0 4px; font-size:18px; text-align:center; }
-        .subtitle { color:#64748B; font-size:13px; text-align:center; margin-bottom:16px; }
-        .amount-badge { background:#F1F5F9; border-radius:8px; padding:10px;
-          text-align:center; margin-bottom:16px; font-size:14px; }
-        .amount-badge strong { color:${color}; font-size:18px; }
-        .form-row { display:flex; gap:12px; }
-        .form-group { margin-bottom:14px; flex:1; }
-        .form-group label { display:block; font-size:12px; font-weight:600;
-          color:#374151; margin-bottom:5px; }
-        .form-group input { width:100%; padding:10px 12px; border:1.5px solid #E2E8F0;
-          border-radius:8px; font-size:14px; outline:none; transition:border 0.2s; }
-        .form-group input:focus { border-color:${color}; }
-        .form-errors { background:#FEE2E2; border-radius:8px; padding:10px 14px;
-          margin-bottom:14px; }
-        .form-errors p { color:#DC2626; font-size:12px; margin:2px 0; }
-        .confirm-btn { width:100%; padding:13px; border-radius:10px; border:none;
-          background:${color}; color:#fff; font-size:15px; font-weight:700;
-          cursor:pointer; margin-bottom:8px; transition:opacity 0.2s; }
-        .confirm-btn:hover { opacity:0.9; }
-        .cancel-btn { width:100%; padding:10px; border-radius:10px;
-          border:1.5px solid #E2E8F0; background:#fff; cursor:pointer;
-          font-size:14px; color:#64748B; }
-        .iframe-overlay { position:fixed; inset:0; background:rgba(0,0,0,0.6);
-          display:flex; align-items:center; justify-content:center; z-index:9999; }
-        .iframe-container { background:#fff; border-radius:16px; overflow:hidden;
-          width:min(600px,95vw); max-height:90vh; display:flex;
-          flex-direction:column; position:relative; }
-        .iframe-header { display:flex; align-items:center; justify-content:space-between;
-          padding:14px 20px; border-bottom:1px solid #E2E8F0; background:#F8FAFC; }
-        .iframe-header span { font-size:14px; font-weight:600; color:#374151; }
-        .iframe-close { background:none; border:none; font-size:20px; cursor:pointer;
-          color:#64748B; padding:4px; border-radius:6px; transition:background 0.2s; }
-        .iframe-close:hover { background:#E2E8F0; }
-        .iframe-body { flex:1; overflow:hidden; min-height:500px; }
-        .iframe-body iframe { width:100%; height:100%; border:none; min-height:500px; }
+        .wrapper { width: 100%; }
+
+        .msg-error {
+          color: #DC2626; font-size: 13px; margin-bottom: 10px;
+          padding: 10px 14px; background: #FEF2F2;
+          border: 1px solid #FECACA; border-radius: 8px;
+          text-align: center; line-height: 1.5;
+        }
+        .msg-warn {
+          color: #92400E; font-size: 12px; margin-bottom: 10px;
+          padding: 8px 12px; background: #FFFBEB;
+          border: 1px dashed #F59E0B; border-radius: 8px;
+          text-align: center;
+        }
+
+        .pay-btn {
+          width: 100%;
+          padding: 14px 20px;
+          border-radius: 10px;
+          border: none;
+          background: ${this.loading ? "#93C5FD" : color};
+          color: #ffffff;
+          font-size: 15px;
+          font-weight: 700;
+          letter-spacing: 0.01em;
+          cursor: ${this.loading ? "wait" : "pointer"};
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          transition: opacity 0.2s, transform 0.15s;
+          min-height: 50px;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+          line-height: 1.2;
+        }
+        .pay-btn:hover:not(:disabled) { opacity: 0.88; transform: translateY(-1px); }
+        .pay-btn:active:not(:disabled) { transform: translateY(0); }
+
+        .secure-badge {
+          display: flex; align-items: center; justify-content: center;
+          gap: 5px; margin-top: 8px; font-size: 11px; color: #94A3B8;
+        }
+        .secure-badge strong { color: #64748B; }
+
+        /* Overlay */
+        .overlay {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.55);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 999999; padding: 16px;
+        }
+        .modal {
+          background: #fff; border-radius: 20px;
+          padding: 28px 24px 24px; width: 100%; max-width: 420px;
+          position: relative;
+          box-shadow: 0 20px 60px rgba(0,0,0,0.25);
+          animation: slideUp 0.25s ease;
+        }
+        @keyframes slideUp {
+          from { transform: translateY(16px); opacity: 0; }
+          to   { transform: translateY(0);    opacity: 1; }
+        }
+        .modal-close {
+          position: absolute; top: 14px; right: 16px;
+          background: #F1F5F9; border: none;
+          width: 30px; height: 30px; border-radius: 50%;
+          font-size: 14px; cursor: pointer; color: #64748B;
+          display: flex; align-items: center; justify-content: center;
+          transition: background 0.2s;
+        }
+        .modal-close:hover { background: #E2E8F0; }
+        .modal-title { font-size: 17px; font-weight: 700; color: #1E293B; text-align: center; margin-bottom: 4px; }
+        .modal-subtitle { font-size: 13px; color: #94A3B8; text-align: center; margin-bottom: 16px; }
+        .amount-badge {
+          background: #F8FAFC; border: 1px solid #E2E8F0;
+          border-radius: 10px; padding: 10px 14px;
+          text-align: center; margin-bottom: 18px; font-size: 13px; color: #64748B;
+        }
+        .amount-badge span { font-size: 22px; font-weight: 800; color: ${color}; display: block; margin-top: 3px; }
+
+        .form-errors {
+          background: #FEF2F2; border: 1px solid #FECACA;
+          border-radius: 8px; padding: 10px 14px; margin-bottom: 14px;
+        }
+        .form-errors p { color: #DC2626; font-size: 12px; margin: 2px 0; }
+
+        .form-row { display: flex; gap: 10px; }
+        .form-group { margin-bottom: 12px; flex: 1; }
+        .form-group label {
+          display: block; font-size: 11px; font-weight: 700;
+          color: #475569; margin-bottom: 5px;
+          text-transform: uppercase; letter-spacing: 0.04em;
+        }
+        .form-group input {
+          width: 100%; padding: 10px 12px;
+          border: 1.5px solid #E2E8F0; border-radius: 8px;
+          font-size: 14px; outline: none;
+          transition: border-color 0.2s, box-shadow 0.2s;
+          color: #1E293B; background: #fff; font-family: inherit;
+        }
+        .form-group input:focus { border-color: ${color}; box-shadow: 0 0 0 3px ${color}22; }
+        .form-group input::placeholder { color: #CBD5E1; }
+
+        .confirm-btn {
+          width: 100%; padding: 13px; border-radius: 10px; border: none;
+          background: ${color}; color: #fff; font-size: 15px;
+          font-weight: 700; cursor: pointer; margin-bottom: 8px;
+          transition: opacity 0.2s; font-family: inherit;
+          box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+        }
+        .confirm-btn:hover { opacity: 0.9; }
+        .cancel-btn {
+          width: 100%; padding: 10px; border-radius: 10px;
+          border: 1.5px solid #E2E8F0; background: #fff;
+          cursor: pointer; font-size: 14px; color: #64748B;
+          transition: background 0.2s; font-family: inherit;
+        }
+        .cancel-btn:hover { background: #F8FAFC; }
+
+        /* Iframe */
+        .iframe-overlay {
+          position: fixed; inset: 0;
+          background: rgba(0,0,0,0.65);
+          display: flex; align-items: center; justify-content: center;
+          z-index: 999999; padding: 12px;
+        }
+        .iframe-container {
+          background: #fff; border-radius: 16px; overflow: hidden;
+          width: min(600px, 100%); max-height: 92vh;
+          display: flex; flex-direction: column;
+          box-shadow: 0 24px 80px rgba(0,0,0,0.35);
+        }
+        .iframe-header {
+          display: flex; align-items: center; justify-content: space-between;
+          padding: 14px 20px; border-bottom: 1px solid #E2E8F0;
+          background: #F8FAFC; flex-shrink: 0;
+        }
+        .iframe-header-title { font-size: 14px; font-weight: 600; color: #374151; }
+        .iframe-close {
+          background: #E2E8F0; border: none; width: 28px; height: 28px;
+          border-radius: 50%; font-size: 13px; cursor: pointer; color: #64748B;
+          display: flex; align-items: center; justify-content: center;
+          transition: background 0.2s;
+        }
+        .iframe-close:hover { background: #CBD5E1; }
+        .iframe-body { flex: 1; overflow: auto; min-height: 480px; }
+        .iframe-body iframe { width: 100%; height: 100%; border: none; min-height: 480px; display: block; }
       </style>
 
-      <div class="container">
-        ${this.error ? `<div class="error">⚠ ${this.error}</div>` : ""}
-        ${!isReady ? `<div class="error">⚠ Configuration MiPS non configurée.</div>` : ""}
-        <button id="mips-pay-btn" class="pay-btn" ${!isReady || this.loading ? "disabled" : ""}>
-          ${this.loading ? "⏳ Traitement..." : `${this.buttonText} — ${displayAmount}`}
+      <div class="wrapper">
+        ${!isReady && !isEditor ? `<div class="msg-warn">⚙ Configuration MiPS requise</div>` : ""}
+        ${this.error ? `<div class="msg-error">⚠ ${this.error}</div>` : ""}
+
+        <button id="mips-pay-btn" class="pay-btn" ${this.loading ? "disabled" : ""}>
+          ${btnLabel}
         </button>
+
         <div class="secure-badge">🔒 Paiement sécurisé via <strong>MiPS</strong></div>
       </div>
 
@@ -607,35 +730,38 @@ class MipsPay extends HTMLElement {
           ? `
         <div class="overlay">
           <div class="modal">
-            <button id="mips-cancel-form" class="modal-close">✕</button>
-            <h2>${this.paymentTitle}</h2>
-            <p class="subtitle">Vos informations pour finaliser le paiement</p>
-            <div class="amount-badge">Montant : <strong>${displayAmount}</strong></div>
+            <button id="mips-cancel-form" class="modal-close" title="Fermer">✕</button>
+            <div class="modal-title">${this.paymentTitle}</div>
+            <div class="modal-subtitle">Vos informations de contact</div>
+            <div class="amount-badge">
+              Montant à payer
+              <span>${displayAmount}</span>
+            </div>
             ${
               this.customerFormErrors.length > 0
                 ? `
               <div class="form-errors">
-                ${this.customerFormErrors.map((e) => `<p>⚠ ${e}</p>`).join("")}
+                ${this.customerFormErrors.map((e) => `<p>• ${e}</p>`).join("")}
               </div>`
                 : ""
             }
             <div class="form-row">
               <div class="form-group">
                 <label>Prénom *</label>
-                <input id="mips-firstname" type="text" placeholder="Jean" />
+                <input id="mips-firstname" type="text" placeholder="Jean" autocomplete="given-name" />
               </div>
               <div class="form-group">
                 <label>Nom *</label>
-                <input id="mips-lastname" type="text" placeholder="Dupont" />
+                <input id="mips-lastname" type="text" placeholder="Dupont" autocomplete="family-name" />
               </div>
             </div>
             <div class="form-group">
               <label>Téléphone *</label>
-              <input id="mips-phone" type="tel" placeholder="+230 5xxx xxxx" />
+              <input id="mips-phone" type="tel" placeholder="+230 5xxx xxxx" autocomplete="tel" />
             </div>
             <div class="form-group">
-              <label>Email</label>
-              <input id="mips-email" type="email" placeholder="jean@email.com" />
+              <label>Email <span style="color:#94A3B8;font-weight:400;text-transform:none">(optionnel)</span></label>
+              <input id="mips-email" type="email" placeholder="jean@email.com" autocomplete="email" />
             </div>
             <button id="mips-confirm-pay" class="confirm-btn">
               Procéder au paiement — ${displayAmount}
@@ -652,14 +778,14 @@ class MipsPay extends HTMLElement {
         <div class="iframe-overlay">
           <div class="iframe-container">
             <div class="iframe-header">
-              <span>🔒 Paiement sécurisé MiPS — ${displayAmount}</span>
+              <div class="iframe-header-title">🔒 Paiement sécurisé — ${displayAmount}</div>
               <button id="mips-iframe-close" class="iframe-close" title="Fermer">✕</button>
             </div>
             <div class="iframe-body">
               ${
                 this.iframeHtml
                   ? this.iframeHtml
-                  : `<div style="padding:40px;text-align:center;color:#64748B">Chargement...</div>`
+                  : `<div style="padding:40px;text-align:center;color:#94A3B8;font-family:system-ui">Chargement...</div>`
               }
             </div>
           </div>
@@ -667,22 +793,9 @@ class MipsPay extends HTMLElement {
           : ""
       }
     `;
-
-    // Bouton annuler secondaire dans le modal
-    const cancelBtn2 = this.shadow.getElementById("mips-cancel-form-2");
-    if (cancelBtn2)
-      cancelBtn2.addEventListener("click", () => {
-        this.showCustomerForm = false;
-        this.customerFormErrors = [];
-        this.render();
-        this.attachEvents();
-      });
   }
 }
 
 if (!customElements.get("mips-pay")) {
   customElements.define("mips-pay", MipsPay);
 }
-
-// Export pour usage Wix si nécessaire
-// export { encryptCredentials, decryptCredentials };
