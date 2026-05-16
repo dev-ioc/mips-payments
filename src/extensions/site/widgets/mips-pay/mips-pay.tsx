@@ -1,5 +1,5 @@
 // src/extensions/site/widgets/mips-pay/mips-pay.tsx
-const MIPS_PROXY = "https://mips-cors-proxy.dev-mdg.workers.dev";
+const MIPS_PROXY = "https://develop-mips-payments.dev-mdg.workers.dev";
 
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
@@ -244,7 +244,7 @@ class MipsPay extends HTMLElement {
       const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
 
       // Appel via le proxy CORS (pas directement api.mips.mu)
-      const res = await fetch(`https://api.mips.mu/api/load_payment_zone`, {
+      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
           "Content-Type":  "application/json",
