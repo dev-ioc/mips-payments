@@ -1,5 +1,5 @@
 // src/extensions/site/widgets/mips-pay/mips-pay.tsx
-const MIPS_PROXY = "https://develop-mips-payments.dev-mdg.workers.dev";
+const MIPS_PROXY = "https://mips-cors-proxy.dev-mdg.workers.dev";
 
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
