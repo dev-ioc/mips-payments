@@ -219,100 +219,110 @@ class MipsPay extends HTMLElement {
     this.render(); this.attachDOMEvents();
   }
 
-  private async processPayment() {
-    const errors: string[] = [];
-    if (!this.customerInfo.firstName.trim()) errors.push("Le prénom est requis");
-    if (!this.customerInfo.lastName.trim())  errors.push("Le nom est requis");
-    if (!this.customerInfo.phone.trim())     errors.push("Le téléphone est requis");
-    else if (!/^[0-9\s+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
-      errors.push("Numéro de téléphone invalide");
+// Dans mips-pay.tsx
 
-    if (errors.length > 0) {
-      this.customerFormErrors = errors;
-      this.render(); this.attachDOMEvents(); return;
-    }
+private async processPayment() {
+  // Validation du formulaire (inchangée)
+  const errors: string[] = [];
+  if (!this.customerInfo.firstName.trim()) errors.push("Le prénom est requis");
+  if (!this.customerInfo.lastName.trim())  errors.push("Le nom est requis");
+  if (!this.customerInfo.phone.trim())     errors.push("Le téléphone est requis");
+  else if (!/^[0-9\s+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
+    errors.push("Numéro de téléphone invalide");
 
-    this.showCustomerForm = false;
-    this.loading = true;
-    this.error = "";
-    this.render(); this.attachDOMEvents();
-
-    try {
-      const creds = await this.getCredentials();
-      if (!creds) {
-        this.loading = false; this.render(); this.attachDOMEvents(); return;
-      }
-
-      const id_order  = generateOrderId();
-      this.paymentId  = id_order;
-      const amount    = this.effectiveAmount;
-      const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
-
-      // Appel via le proxy CORS (pas directement api.mips.mu)
-      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
-        method: "POST",
-        headers: {
-          "Content-Type":  "application/json",
-          "Accept":        "application/json",
-          "Authorization": `Basic ${basicAuth}`,
-        },
-        body: JSON.stringify({
-          authentify: {
-            id_merchant:      creds.id_merchant,
-            id_entity:        creds.id_entity,
-            id_operator:      creds.id_operator,
-            operator_password: creds.operator_password,
-          },
-          order: { id_order, currency: this.currency, amount },
-          request_mode: this.requestMode,
-          touchpoint: "web",
-          iframe_behavior: {
-            custom_redirection_url: `${window.location.origin}/thank-you-page`,
-            language: "FR",
-          },
-          additional_params: [
-            { param_name: "first_name",   param_value: this.customerInfo.firstName.trim() },
-            { param_name: "last_name",    param_value: this.customerInfo.lastName.trim() },
-            { param_name: "phone_number", param_value: this.customerInfo.phone.trim() },
-            { param_name: "client_email", param_value: this.customerInfo.email.trim() },
-          ],
-        }),
-      });
-
-      const raw = await res.text();
-      let mipsData: any;
-      try { mipsData = JSON.parse(raw); }
-      catch { throw new Error("Réponse invalide du proxy MiPS"); }
-
-      const opStatus        = mipsData.answer?.operation_status || mipsData.operation_status;
-      const paymentZoneData = mipsData.answer?.payment_zone_data || null;
-
-      if (opStatus !== "success") {
-        throw new Error(mipsData.answer?.message || "Erreur création paiement MiPS");
-      }
-      if (!paymentZoneData) throw new Error("Aucune zone de paiement retournée");
-
-      // Extraire src de l'iframe ou créer un blob
-      const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-      this.iframeUrl = iframeMatch?.[1]
-        || URL.createObjectURL(new Blob([paymentZoneData], { type: "text/html" }));
-      this.showIframe = true;
-      this.error = "";
-
-    } catch (err: any) {
-      this.error = err.message || "Erreur réseau";
-    }
-
-    this.loading = false;
-    this.render(); this.attachDOMEvents();
+  if (errors.length > 0) {
+    this.customerFormErrors = errors;
+    this.render(); this.attachDOMEvents(); 
+    return;
   }
+
+  this.showCustomerForm = false;
+  this.loading = true;
+  this.error = "";
+  this.render(); this.attachDOMEvents();
+
+  try {
+    const creds = await this.getCredentials();
+    if (!creds) {
+      this.loading = false; 
+      this.render(); this.attachDOMEvents(); 
+      return;
+    }
+
+    const id_order = generateOrderId();
+    this.paymentId = id_order;
+    const amount = this.effectiveAmount;
+
+    const response = await fetch('/_functions/mips_payment', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        authentify: {
+          id_merchant: creds.id_merchant,
+          id_entity: creds.id_entity,
+          id_operator: creds.id_operator,
+          operator_password: creds.operator_password,
+        },
+        order: { 
+          id_order, 
+          currency: this.currency, 
+          amount 
+        },
+        request_mode: this.requestMode,
+        touchpoint: "web",
+        iframe_behavior: {
+          custom_redirection_url: `${window.location.origin}/thank-you-page`,
+          language: "FR",
+        },
+        additional_params: [
+          { param_name: "first_name", param_value: this.customerInfo.firstName.trim() },
+          { param_name: "last_name", param_value: this.customerInfo.lastName.trim() },
+          { param_name: "phone_number", param_value: this.customerInfo.phone.trim() },
+          { param_name: "client_email", param_value: this.customerInfo.email.trim() },
+        ],
+      }),
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+    }
+
+    const mipsData = await response.json();
+    const opStatus = mipsData.answer?.operation_status || mipsData.operation_status;
+    const paymentZoneData = mipsData.answer?.payment_zone_data || mipsData.payment_zone_data;
+
+    if (opStatus !== "success") {
+      throw new Error(mipsData.answer?.message || "Erreur création paiement MiPS");
+    }
+    
+    if (!paymentZoneData) {
+      throw new Error("Aucune zone de paiement retournée");
+    }
+    const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+    this.iframeUrl = iframeMatch?.[1] || URL.createObjectURL(
+      new Blob([paymentZoneData], { type: "text/html" })
+    );
+    
+    this.showIframe = true;
+    this.error = "";
+
+  } catch (err: any) {
+    console.error("Erreur paiement:", err);
+    this.error = err.message || "Erreur réseau";
+  }
+
+  this.loading = false;
+  this.render(); 
+  this.attachDOMEvents();
+}
 
   private getDisplayAmount(): string {
     const amt = this.effectiveAmount;
     return amt > 0 ? `${amt.toFixed(2)} ${this.currency}` : `-- ${this.currency}`;
   }
 
-  // ─── Events DOM ───────────────────────────────────────────────────────────────
   private attachDOMEvents() {
     const replace = (id: string, fn: () => void) => {
       const el = this.shadow.getElementById(id);
@@ -378,7 +388,6 @@ class MipsPay extends HTMLElement {
     this.render(); this.attachDOMEvents();
   }
 
-  // ─── Rendu ────────────────────────────────────────────────────────────────────
   render() {
     const displayAmount = this.getDisplayAmount();
     const color   = this.buttonColor;
