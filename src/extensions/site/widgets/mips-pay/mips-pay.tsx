@@ -354,17 +354,6 @@ class MipsPay extends HTMLElement {
       }
     });
   }
-  // Méthode utilitaire pour échapper le HTML
-  private escapeHtml(str: string): string {
-    if (!str) return "";
-    return str
-      .replace(/&/g, "&amp;")
-      .replace(/</g, "&lt;")
-      .replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;")
-      .replace(/'/g, "&#39;");
-  }
-
   // Extraire l'URL de l'iframe depuis le HTML retourné par MiPS
   private extractIframeUrl(html: string): string | null {
     // Chercher une balise iframe avec src
