@@ -954,6 +954,7 @@ class MipsPay extends HTMLElement {
     `;
   }
 }
+
 if (!customElements.get("mips-pay")) {
   customElements.define("mips-pay", MipsPay);
 }
