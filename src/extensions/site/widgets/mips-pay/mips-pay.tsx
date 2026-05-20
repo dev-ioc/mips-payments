@@ -281,62 +281,25 @@ class MipsPay extends HTMLElement {
    * et dans les iframes same-origin accessibles.
    */
   private readAmountFromDOM(): number {
-    // Sélecteurs spécifiques Wix
-    const selectors = [
-      "[data-hook='cart-widget-total']",
-      "[data-hook='cart-total']",
-      "[data-hook='order-total']",
-      "[data-hook='price-value']",
-      ".cart-total",
-      ".total-amount",
-      "[class*='total'] [class*='price']",
-      "[class*='summary'] [class*='total']",
-    ];
+    try {
+      const bodyText = document.body.innerText;
+      const allAmounts = bodyText.match(/(\d+(?:[.,]\d+)?)\s*Ar/g);
 
-    for (const selector of selectors) {
-      const element = document.querySelector(selector);
-      if (element) {
-        const text = element.textContent || "";
-        // Extraire le nombre (ex: "25 Ar" -> 25)
-        const match = text.match(/(\d+(?:[.,]\d+)?)/);
+      if (allAmounts && allAmounts.length > 0) {
+        const lastAmountStr = allAmounts[allAmounts.length - 1];
+        const match = lastAmountStr.match(/(\d+(?:[.,]\d+)?)/);
         if (match) {
           const amount = parseFloat(match[1].replace(",", "."));
-          if (!isNaN(amount) && amount > 0) {
-            return amount;
-          }
+          console.log(`✅ Montant trouvé: ${amount} Ar`);
+          return amount;
         }
       }
+      return 0;
+    } catch (e) {
+      console.error("Erreur lecture DOM:", e);
+      return 0;
     }
-
-    // Chercher dans les iframes (panier peut être dans un iframe)
-    const iframes = document.querySelectorAll("iframe");
-    for (const iframe of iframes) {
-      try {
-        const iframeDoc =
-          iframe.contentDocument || iframe.contentWindow?.document;
-        if (iframeDoc) {
-          for (const selector of selectors) {
-            const element = iframeDoc.querySelector(selector);
-            if (element) {
-              const text = element.textContent || "";
-              const match = text.match(/(\d+(?:[.,]\d+)?)/);
-              if (match) {
-                const amount = parseFloat(match[1].replace(",", "."));
-                if (!isNaN(amount) && amount > 0) {
-                  return amount;
-                }
-              }
-            }
-          }
-        }
-      } catch (e) {
-        // Cross-origin iframe, ignorer
-      }
-    }
-
-    return 0;
   }
-
   /**
    * Retry DOM + API toutes les 500ms pendant 10s.
    */
