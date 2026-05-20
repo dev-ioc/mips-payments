@@ -130,7 +130,36 @@ class MipsPay extends HTMLElement {
     return !!this.encryptedCredentials;
   }
 
-  // ─── Lifecycle ────────────────────────────────────────────────────────────
+  private _domObserver: MutationObserver | null = null;
+  private observeCartChanges() {
+    // Observer les changements dans le DOM (quand le prix change)
+    const observer = new MutationObserver(() => {
+      const newAmount = this.readAmountFromDOM();
+      if (newAmount > 0 && newAmount !== this._cartAmount) {
+        console.log(
+          "🔄 Montant du panier changé:",
+          newAmount,
+          "(ancien:",
+          this._cartAmount,
+          ")",
+        );
+        this._cartAmount = newAmount;
+        this.render();
+        this.attachDOMEvents();
+      }
+    });
+
+    // Observer tout le body pour les changements
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      characterData: true,
+      characterDataOldValue: true,
+    });
+
+    // Stocker l'observer pour le nettoyer plus tard
+    this._domObserver = observer;
+  }
 
   connectedCallback() {
     if (this._initialized) return;
@@ -139,12 +168,17 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
     if (this.amountSource === "cart") this.loadCartAmount();
     this.listenToMessages();
+    this.observeCartChanges();
   }
 
   disconnectedCallback() {
     if (this._cartRetryInterval) {
       clearInterval(this._cartRetryInterval);
       this._cartRetryInterval = null;
+    }
+    if (this._domObserver) {
+      this._domObserver.disconnect();
+      this._domObserver = null;
     }
   }
 
