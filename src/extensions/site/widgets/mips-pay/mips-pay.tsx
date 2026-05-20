@@ -529,7 +529,11 @@ class MipsPay extends HTMLElement {
             id_operator: creds.id_operator,
             operator_password: creds.operator_password,
           },
-          order: { id_order, currency: this.currency, amount },
+          order: {
+            id_order,
+            currency: this.currency === "Ar" ? "MGA" : this.currency,
+            amount,
+          },
           request_mode: this.requestMode,
           touchpoint: "web",
           iframe_behavior: {
