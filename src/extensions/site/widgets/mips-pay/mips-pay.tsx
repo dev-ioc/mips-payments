@@ -221,24 +221,27 @@ class MipsPay extends HTMLElement {
    */
   private async fetchCartViaWorkerProxy(): Promise<number> {
     try {
-      const res = await fetch(`${WORKER_BASE}/api/cart-total`, {
+      // Envoyer l'URL du site dans les paramètres de requête
+      const siteUrl = encodeURIComponent(window.location.origin);
+      const url = `${WORKER_BASE}/api/cart-total?siteUrl=${siteUrl}`;
+
+      const res = await fetch(url, {
         method: "GET",
-        credentials: "include", // envoie les cookies
+        credentials: "omit", // Important: ne pas envoyer les credentials pour éviter l'erreur CORS
         headers: {
           "Content-Type": "application/json",
-          // Passe le referer pour que le worker sache quel site Wix interroger
-          "X-Site-Url": window.location.href,
         },
       });
+
       if (!res.ok) return 0;
       const data = await res.json();
       const amount = parseFloat(String(data?.amount || 0));
       return isNaN(amount) ? 0 : amount;
-    } catch {
+    } catch (error) {
+      console.error("Erreur proxy worker:", error);
       return 0;
     }
   }
-
   /**
    * Appels directs aux APIs REST Wix (production, même domaine).
    */
