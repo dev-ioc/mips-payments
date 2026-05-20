@@ -186,33 +186,32 @@ class MipsPay extends HTMLElement {
    * Tente toutes les stratégies dans l'ordre de fiabilité.
    */
   private async getWixCartTotal(): Promise<{ amount: number }> {
-    // 1. Via notre worker proxy (fonctionne en preview ET en production)
-    const workerAmount = await this.fetchCartViaWorkerProxy();
-    if (workerAmount > 0) return { amount: workerAmount };
-
-    // 2. API REST Wix directe (production uniquement, même domaine)
-    const apiAmount = await this.fetchCartFromWixAPI();
-    if (apiAmount > 0) return { amount: apiAmount };
-
-    // 3. wixEmbedsAPI (production uniquement)
-    try {
-      const w = window as any;
-      if (w.wixEmbedsAPI?.getCurrentCart) {
-        const cart = await w.wixEmbedsAPI.getCurrentCart();
-        const a = cart?.totals?.total || cart?.totalPrice || 0;
-        if (a > 0) return { amount: a };
-      }
-    } catch {
-      /* ignoré */
+    // 1. Lecture DOM directe (la plus fiable en preview Wix)
+    const domAmount = this.readAmountFromDOM();
+    if (domAmount > 0) {
+      console.log("Montant trouvé dans le DOM:", domAmount);
+      return { amount: domAmount };
     }
 
-    // 4. Lecture DOM (même frame)
-    const domAmount = this.readAmountFromDOM();
-    if (domAmount > 0) return { amount: domAmount };
+    // 2. Attendre que le DOM soit chargé (retry)
+    const domAmountRetry = await this.waitForDomAmount();
+    if (domAmountRetry > 0) return { amount: domAmountRetry };
 
-    // 5. postMessage vers le frame parent
-    const msgAmount = await this.getAmountViaPostMessage();
-    return { amount: msgAmount > 0 ? msgAmount : this.fixedAmount };
+    // 3. Fallback: montant fixe
+    return { amount: this.fixedAmount };
+  }
+  private waitForDomAmount(maxAttempts: number = 10): Promise<number> {
+    return new Promise((resolve) => {
+      let attempts = 0;
+      const interval = setInterval(() => {
+        attempts++;
+        const amount = this.readAmountFromDOM();
+        if (amount > 0 || attempts >= maxAttempts) {
+          clearInterval(interval);
+          resolve(amount);
+        }
+      }, 500);
+    });
   }
 
   /**
@@ -282,54 +281,57 @@ class MipsPay extends HTMLElement {
    * et dans les iframes same-origin accessibles.
    */
   private readAmountFromDOM(): number {
+    // Sélecteurs spécifiques Wix
     const selectors = [
       "[data-hook='cart-widget-total']",
       "[data-hook='cart-total']",
       "[data-hook='order-total']",
-      "[data-hook='summary-item-value']:last-child",
-      "span[data-hook='price-value']",
-      "[class*='TotalsSection'] [class*='price']",
-      "[class*='totals'] [class*='value']",
-      "[class*='CartTotal'] [class*='price']",
-      "[class*='orderSummary'] [class*='total']",
-      "[class*='summary'] [class*='price']",
+      "[data-hook='price-value']",
       ".cart-total",
+      ".total-amount",
+      "[class*='total'] [class*='price']",
+      "[class*='summary'] [class*='total']",
     ];
 
-    for (const sel of selectors) {
-      const el = document.querySelector(sel);
-      if (el) {
-        const raw = (el.textContent || "")
-          .replace(/[^0-9.,]/g, "")
-          .replace(",", ".");
-        const val = parseFloat(raw);
-        if (!isNaN(val) && val > 0) return val;
+    for (const selector of selectors) {
+      const element = document.querySelector(selector);
+      if (element) {
+        const text = element.textContent || "";
+        // Extraire le nombre (ex: "25 Ar" -> 25)
+        const match = text.match(/(\d+(?:[.,]\d+)?)/);
+        if (match) {
+          const amount = parseFloat(match[1].replace(",", "."));
+          if (!isNaN(amount) && amount > 0) {
+            return amount;
+          }
+        }
       }
     }
 
-    // Iframes same-origin
-    try {
-      const frames = Array.from(document.querySelectorAll("iframe"));
-      for (const frame of frames) {
-        try {
-          const doc = frame.contentDocument || frame.contentWindow?.document;
-          if (!doc) continue;
-          for (const sel of selectors) {
-            const el = doc.querySelector(sel);
-            if (el) {
-              const raw = (el.textContent || "")
-                .replace(/[^0-9.,]/g, "")
-                .replace(",", ".");
-              const val = parseFloat(raw);
-              if (!isNaN(val) && val > 0) return val;
+    // Chercher dans les iframes (panier peut être dans un iframe)
+    const iframes = document.querySelectorAll("iframe");
+    for (const iframe of iframes) {
+      try {
+        const iframeDoc =
+          iframe.contentDocument || iframe.contentWindow?.document;
+        if (iframeDoc) {
+          for (const selector of selectors) {
+            const element = iframeDoc.querySelector(selector);
+            if (element) {
+              const text = element.textContent || "";
+              const match = text.match(/(\d+(?:[.,]\d+)?)/);
+              if (match) {
+                const amount = parseFloat(match[1].replace(",", "."));
+                if (!isNaN(amount) && amount > 0) {
+                  return amount;
+                }
+              }
             }
           }
-        } catch {
-          /* cross-origin, ignoré */
         }
+      } catch (e) {
+        // Cross-origin iframe, ignorer
       }
-    } catch {
-      /* ignoré */
     }
 
     return 0;
