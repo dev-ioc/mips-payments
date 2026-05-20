@@ -558,6 +558,7 @@ class MipsPay extends HTMLElement {
       });
 
       const raw = await res.text();
+      console.log("Réponse MiPS:", raw.substring(0, 500));
       let mipsData: any;
       try {
         mipsData = JSON.parse(raw);
