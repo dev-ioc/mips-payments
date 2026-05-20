@@ -562,7 +562,12 @@ class MipsPay extends HTMLElement {
       });
 
       const raw = await res.text();
-      console.log("Réponse MiPS:", raw.substring(0, 500));
+      try {
+        const parsed = JSON.parse(raw);
+        console.log("Réponse MiPS:", JSON.stringify(parsed, null, 2));
+      } catch (e) {
+        console.log("Réponse MiPS (non-JSON):", raw.substring(0, 500));
+      }
       let mipsData: any;
       try {
         mipsData = JSON.parse(raw);
@@ -729,204 +734,202 @@ class MipsPay extends HTMLElement {
         : this.buttonText;
 
     this.shadow.innerHTML = `
-    <style>
-      *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
-      :host { display:block; width:100%; font-family:system-ui,-apple-system,sans-serif; }
+      <style>
+        *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+        :host { display:block; width:100%; font-family:system-ui,-apple-system,sans-serif; }
 
-      .msg-error {
-        color:#DC2626; font-size:13px; margin-bottom:10px; padding:10px 14px;
-        background:#FEF2F2; border:1px solid #FECACA; border-radius:8px;
-        text-align:center; line-height:1.5;
-      }
-      .msg-warn {
-        color:#92400E; font-size:12px; margin-bottom:10px; padding:8px 12px;
-        background:#FFFBEB; border:1px dashed #F59E0B; border-radius:8px; text-align:center;
-      }
-      .pay-btn {
-        width:100%; padding:14px 20px; border-radius:10px; border:none;
-        background:${this.loading ? "#93C5FD" : color};
-        color:#fff; font-size:15px; font-weight:700; letter-spacing:0.01em;
-        cursor:${this.loading ? "wait" : "pointer"};
-        display:flex; align-items:center; justify-content:center; gap:8px;
-        transition:opacity 0.2s, transform 0.15s; min-height:50px;
-        box-shadow:0 2px 8px rgba(0,0,0,0.15); line-height:1.2;
-      }
-      .pay-btn:hover:not(:disabled) { opacity:.88; transform:translateY(-1px); }
-      .pay-btn:active:not(:disabled) { transform:translateY(0); }
-      .secure-badge {
-        display:flex; align-items:center; justify-content:center;
-        gap:5px; margin-top:8px; font-size:11px; color:#94A3B8;
-      }
-      .secure-badge strong { color:#64748B; }
+        .msg-error {
+          color:#DC2626; font-size:13px; margin-bottom:10px; padding:10px 14px;
+          background:#FEF2F2; border:1px solid #FECACA; border-radius:8px;
+          text-align:center; line-height:1.5;
+        }
+        .msg-warn {
+          color:#92400E; font-size:12px; margin-bottom:10px; padding:8px 12px;
+          background:#FFFBEB; border:1px dashed #F59E0B; border-radius:8px; text-align:center;
+        }
+        .pay-btn {
+          width:100%; padding:14px 20px; border-radius:10px; border:none;
+          background:${this.loading ? "#93C5FD" : color};
+          color:#fff; font-size:15px; font-weight:700; letter-spacing:0.01em;
+          cursor:${this.loading ? "wait" : "pointer"};
+          display:flex; align-items:center; justify-content:center; gap:8px;
+          transition:opacity 0.2s, transform 0.15s; min-height:50px;
+          box-shadow:0 2px 8px rgba(0,0,0,0.15); line-height:1.2;
+        }
+        .pay-btn:hover:not(:disabled) { opacity:.88; transform:translateY(-1px); }
+        .pay-btn:active:not(:disabled) { transform:translateY(0); }
+        .secure-badge {
+          display:flex; align-items:center; justify-content:center;
+          gap:5px; margin-top:8px; font-size:11px; color:#94A3B8;
+        }
+        .secure-badge strong { color:#64748B; }
 
-      .overlay {
-        position:fixed; inset:0; background:rgba(0,0,0,0.55);
-        display:flex; align-items:center; justify-content:center;
-        z-index:999999; padding:16px;
-      }
-      .modal {
-        background:#fff; border-radius:20px; padding:28px 24px 24px;
-        width:100%; max-width:420px; position:relative;
-        box-shadow:0 20px 60px rgba(0,0,0,0.25); animation:slideUp .25s ease;
-      }
-      @keyframes slideUp {
-        from { transform:translateY(16px); opacity:0; }
-        to   { transform:translateY(0);    opacity:1; }
-      }
-      .modal-close {
-        position:absolute; top:14px; right:16px; background:#F1F5F9; border:none;
-        width:30px; height:30px; border-radius:50%; font-size:14px; cursor:pointer;
-        color:#64748B; display:flex; align-items:center; justify-content:center;
-      }
-      .modal-close:hover { background:#E2E8F0; }
-      .modal-title    { font-size:17px; font-weight:700; color:#1E293B; text-align:center; margin-bottom:4px; }
-      .modal-subtitle { font-size:13px; color:#94A3B8; text-align:center; margin-bottom:16px; }
-      .amount-badge {
-        background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px;
-        padding:10px 14px; text-align:center; margin-bottom:18px;
-        font-size:13px; color:#64748B;
-      }
-      .amount-badge span { font-size:22px; font-weight:800; color:${color}; display:block; margin-top:3px; }
-      .form-errors {
-        background:#FEF2F2; border:1px solid #FECACA; border-radius:8px;
-        padding:10px 14px; margin-bottom:14px;
-      }
-      .form-errors p { color:#DC2626; font-size:12px; margin:2px 0; }
-      .form-row { display:flex; gap:10px; }
-      .form-group { margin-bottom:12px; flex:1; }
-      .form-group label {
-        display:block; font-size:11px; font-weight:700; color:#475569;
-        margin-bottom:5px; text-transform:uppercase; letter-spacing:0.04em;
-      }
-      .form-group input {
-        width:100%; padding:10px 12px; border:1.5px solid #E2E8F0;
-        border-radius:8px; font-size:14px; outline:none; color:#1E293B;
-        background:#fff; font-family:inherit;
-        transition:border-color .2s,box-shadow .2s;
-      }
-      .form-group input:focus { border-color:${color}; box-shadow:0 0 0 3px ${color}22; }
-      .form-group input::placeholder { color:#CBD5E1; }
-      .confirm-btn {
-        width:100%; padding:13px; border-radius:10px; border:none;
-        background:${color}; color:#fff; font-size:15px; font-weight:700;
-        cursor:pointer; margin-bottom:8px; font-family:inherit;
-        box-shadow:0 2px 8px rgba(0,0,0,0.15); transition:opacity .2s;
-      }
-      .confirm-btn:hover { opacity:.9; }
-      .cancel-btn {
-        width:100%; padding:10px; border-radius:10px;
-        border:1.5px solid #E2E8F0; background:#fff; cursor:pointer;
-        font-size:14px; color:#64748B; font-family:inherit;
-      }
-      .cancel-btn:hover { background:#F8FAFC; }
+        .overlay {
+          position:fixed; inset:0; background:rgba(0,0,0,0.55);
+          display:flex; align-items:center; justify-content:center;
+          z-index:999999; padding:16px;
+        }
+        .modal {
+          background:#fff; border-radius:20px; padding:28px 24px 24px;
+          width:100%; max-width:420px; position:relative;
+          box-shadow:0 20px 60px rgba(0,0,0,0.25); animation:slideUp .25s ease;
+        }
+        @keyframes slideUp {
+          from { transform:translateY(16px); opacity:0; }
+          to   { transform:translateY(0);    opacity:1; }
+        }
+        .modal-close {
+          position:absolute; top:14px; right:16px; background:#F1F5F9; border:none;
+          width:30px; height:30px; border-radius:50%; font-size:14px; cursor:pointer;
+          color:#64748B; display:flex; align-items:center; justify-content:center;
+        }
+        .modal-close:hover { background:#E2E8F0; }
+        .modal-title    { font-size:17px; font-weight:700; color:#1E293B; text-align:center; margin-bottom:4px; }
+        .modal-subtitle { font-size:13px; color:#94A3B8; text-align:center; margin-bottom:16px; }
+        .amount-badge {
+          background:#F8FAFC; border:1px solid #E2E8F0; border-radius:10px;
+          padding:10px 14px; text-align:center; margin-bottom:18px;
+          font-size:13px; color:#64748B;
+        }
+        .amount-badge span { font-size:22px; font-weight:800; color:${color}; display:block; margin-top:3px; }
+        .form-errors {
+          background:#FEF2F2; border:1px solid #FECACA; border-radius:8px;
+          padding:10px 14px; margin-bottom:14px;
+        }
+        .form-errors p { color:#DC2626; font-size:12px; margin:2px 0; }
+        .form-row { display:flex; gap:10px; }
+        .form-group { margin-bottom:12px; flex:1; }
+        .form-group label {
+          display:block; font-size:11px; font-weight:700; color:#475569;
+          margin-bottom:5px; text-transform:uppercase; letter-spacing:0.04em;
+        }
+        .form-group input {
+          width:100%; padding:10px 12px; border:1.5px solid #E2E8F0;
+          border-radius:8px; font-size:14px; outline:none; color:#1E293B;
+          background:#fff; font-family:inherit;
+          transition:border-color .2s,box-shadow .2s;
+        }
+        .form-group input:focus { border-color:${color}; box-shadow:0 0 0 3px ${color}22; }
+        .form-group input::placeholder { color:#CBD5E1; }
+        .confirm-btn {
+          width:100%; padding:13px; border-radius:10px; border:none;
+          background:${color}; color:#fff; font-size:15px; font-weight:700;
+          cursor:pointer; margin-bottom:8px; font-family:inherit;
+          box-shadow:0 2px 8px rgba(0,0,0,0.15); transition:opacity .2s;
+        }
+        .confirm-btn:hover { opacity:.9; }
+        .cancel-btn {
+          width:100%; padding:10px; border-radius:10px;
+          border:1.5px solid #E2E8F0; background:#fff; cursor:pointer;
+          font-size:14px; color:#64748B; font-family:inherit;
+        }
+        .cancel-btn:hover { background:#F8FAFC; }
 
-      .iframe-overlay {
-        position:fixed; inset:0; background:rgba(0,0,0,0.65);
-        display:flex; align-items:center; justify-content:center;
-        z-index:999999; padding:12px;
-      }
-      .iframe-container {
-        background:#fff; border-radius:16px; overflow:hidden;
-        width:min(600px,100%); max-height:92vh;
-        display:flex; flex-direction:column;
-        box-shadow:0 24px 80px rgba(0,0,0,0.35);
-      }
-      .iframe-header {
-        display:flex; align-items:center; justify-content:space-between;
-        padding:14px 20px; border-bottom:1px solid #E2E8F0;
-        background:#F8FAFC; flex-shrink:0;
-      }
-      .iframe-header-title { font-size:14px; font-weight:600; color:#374151; }
-      .iframe-close {
-        background:#E2E8F0; border:none; width:28px; height:28px;
-        border-radius:50%; font-size:13px; cursor:pointer; color:#64748B;
-        display:flex; align-items:center; justify-content:center;
-      }
-      .iframe-close:hover { background:#CBD5E1; }
-      .iframe-body { flex:1; overflow:auto; min-height:500px; background:#fff; }
-      .iframe-body iframe { width:100%; height:600px; border:none; display:block; }
-    </style>
+        .iframe-overlay {
+          position:fixed; inset:0; background:rgba(0,0,0,0.65);
+          display:flex; align-items:center; justify-content:center;
+          z-index:999999; padding:12px;
+        }
+        .iframe-container {
+          background:#fff; border-radius:16px; overflow:hidden;
+          width:min(600px,100%); max-height:92vh;
+          display:flex; flex-direction:column;
+          box-shadow:0 24px 80px rgba(0,0,0,0.35);
+        }
+        .iframe-header {
+          display:flex; align-items:center; justify-content:space-between;
+          padding:14px 20px; border-bottom:1px solid #E2E8F0;
+          background:#F8FAFC; flex-shrink:0;
+        }
+        .iframe-header-title { font-size:14px; font-weight:600; color:#374151; }
+        .iframe-close {
+          background:#E2E8F0; border:none; width:28px; height:28px;
+          border-radius:50%; font-size:13px; cursor:pointer; color:#64748B;
+          display:flex; align-items:center; justify-content:center;
+        }
+        .iframe-close:hover { background:#CBD5E1; }
+        .iframe-body { flex:1; overflow:auto; min-height:500px; background:#fff; }
+        .iframe-body iframe { width:100%; height:500px; border:none; display:block; }
+      </style>
 
-    <div>
-      ${!isReady ? `<div class="msg-warn">⚙ Configurez vos credentials MiPS dans le panel du widget</div>` : ""}
-      ${this.error ? `<div class="msg-error">⚠ ${this.error}</div>` : ""}
-      <button id="mips-pay-btn" class="pay-btn" ${this.loading ? "disabled" : ""}>
-        ${btnLabel}
-      </button>
-      <div class="secure-badge">🔒 Paiement sécurisé via <strong>MiPS</strong></div>
-    </div>
+      <div>
+        ${!isReady ? `<div class="msg-warn">⚙ Configurez vos credentials MiPS dans le panel du widget</div>` : ""}
+        ${this.error ? `<div class="msg-error">⚠ ${this.error}</div>` : ""}
+        <button id="mips-pay-btn" class="pay-btn" ${this.loading ? "disabled" : ""}>
+          ${btnLabel}
+        </button>
+        <div class="secure-badge">🔒 Paiement sécurisé via <strong>MiPS</strong></div>
+      </div>
 
-    ${
-      this.showCustomerForm
-        ? `
-      <div class="overlay">
-        <div class="modal">
-          <button id="mips-cancel-form" class="modal-close" title="Fermer">✕</button>
-          <div class="modal-title">${this.paymentTitle}</div>
-          <div class="modal-subtitle">Vos informations de contact</div>
-          <div class="amount-badge">
-            Montant à payer
-            <span>${displayAmount}</span>
-          </div>
-          ${
-            this.customerFormErrors.length > 0
-              ? `
-            <div class="form-errors">
-              ${this.customerFormErrors.map((e) => `<p>• ${e}</p>`).join("")}
-            </div>`
-              : ""
-          }
-          <div class="form-row">
-            <div class="form-group">
-              <label>Prénom *</label>
-              <input id="mips-firstname" type="text" placeholder="Jean" autocomplete="given-name" />
+      ${
+        this.showCustomerForm
+          ? `
+        <div class="overlay">
+          <div class="modal">
+            <button id="mips-cancel-form" class="modal-close" title="Fermer">✕</button>
+            <div class="modal-title">${this.paymentTitle}</div>
+            <div class="modal-subtitle">Vos informations de contact</div>
+            <div class="amount-badge">
+              Montant à payer
+              <span>${displayAmount}</span>
+            </div>
+            ${
+              this.customerFormErrors.length > 0
+                ? `
+              <div class="form-errors">
+                ${this.customerFormErrors.map((e) => `<p>• ${e}</p>`).join("")}
+              </div>`
+                : ""
+            }
+            <div class="form-row">
+              <div class="form-group">
+                <label>Prénom *</label>
+                <input id="mips-firstname" type="text" placeholder="Jean" autocomplete="given-name" />
+              </div>
+              <div class="form-group">
+                <label>Nom *</label>
+                <input id="mips-lastname" type="text" placeholder="Dupont" autocomplete="family-name" />
+              </div>
             </div>
             <div class="form-group">
-              <label>Nom *</label>
-              <input id="mips-lastname" type="text" placeholder="Dupont" autocomplete="family-name" />
+              <label>Téléphone *</label>
+              <input id="mips-phone" type="tel" placeholder="+230 5xxx xxxx" autocomplete="tel" />
+            </div>
+            <div class="form-group">
+              <label>Email <span style="color:#94A3B8;font-weight:400;text-transform:none">(optionnel)</span></label>
+              <input id="mips-email" type="email" placeholder="jean@email.com" autocomplete="email" />
+            </div>
+            <button id="mips-confirm-pay" class="confirm-btn">
+              Procéder au paiement — ${displayAmount}
+            </button>
+            <button id="mips-cancel-form-2" class="cancel-btn">Annuler</button>
+          </div>
+        </div>`
+          : ""
+      }
+
+      ${
+        this.showIframe && this.iframeUrl
+          ? `
+        <div class="iframe-overlay">
+          <div class="iframe-container">
+            <div class="iframe-header">
+              <div class="iframe-header-title">🔒 Paiement sécurisé — ${displayAmount}</div>
+              <button id="mips-iframe-close" class="iframe-close" title="Fermer">✕</button>
+            </div>
+            <div class="iframe-body">
+              <iframe
+                src="${this.iframeUrl}"
+                title="Paiement MiPS"
+                allow="payment *"
+                sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation">
+              </iframe>
             </div>
           </div>
-          <div class="form-group">
-            <label>Téléphone *</label>
-            <input id="mips-phone" type="tel" placeholder="+230 5xxx xxxx" autocomplete="tel" />
-          </div>
-          <div class="form-group">
-            <label>Email <span style="color:#94A3B8;font-weight:400;text-transform:none">(optionnel)</span></label>
-            <input id="mips-email" type="email" placeholder="jean@email.com" autocomplete="email" />
-          </div>
-          <button id="mips-confirm-pay" class="confirm-btn">
-            Procéder au paiement — ${displayAmount}
-          </button>
-          <button id="mips-cancel-form-2" class="cancel-btn">Annuler</button>
-        </div>
-      </div>`
-        : ""
-    }
-
-    ${
-      this.showIframe && this.iframeUrl
-        ? `
-      <div class="iframe-overlay">
-        <div class="iframe-container">
-          <div class="iframe-header">
-            <div class="iframe-header-title">🔒 Paiement sécurisé — ${displayAmount}</div>
-            <button id="mips-iframe-close" class="iframe-close" title="Fermer">✕</button>
-          </div>
-          <div class="iframe-body">
-            <iframe
-              src="${this.iframeUrl}"
-              title="Paiement MiPS"
-              allow="payment *"
-              sandbox="allow-same-origin allow-scripts allow-popups allow-forms allow-modals allow-top-navigation allow-popups-to-escape-sandbox"
-              style="width:100%; height:600px; border:none;"
-              csp="frame-ancestors 'self' https://*.wixstudio.com https://*.wix.com https://*.mips.mu">
-            </iframe>
-          </div>
-        </div>
-      </div>`
-        : ""
-    }
-  `;
+        </div>`
+          : ""
+      }
+    `;
   }
 }
 
