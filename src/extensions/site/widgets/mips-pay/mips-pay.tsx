@@ -1,5 +1,4 @@
 const MIPS_PROXY = "https://mips-payments-proxy.dev-mdg.workers.dev";
-
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
 async function deriveKey(passphrase: string): Promise<CryptoKey> {
@@ -64,6 +63,7 @@ class MipsPay extends HTMLElement {
   private _veloAmount = 0;
   private _cartAmount = 0;
   private _initialized = false;
+  private _cartRetryInterval: ReturnType<typeof setInterval> | null = null;
 
   private showCustomerForm = false;
   private customerFormErrors: string[] = [];
@@ -77,6 +77,7 @@ class MipsPay extends HTMLElement {
     super();
     this.shadow = this.attachShadow({ mode: "open" });
   }
+
   private get effectiveAmount(): number {
     if (this._veloAmount > 0) return this._veloAmount;
     if (this._cartAmount > 0) return this._cartAmount;
@@ -123,6 +124,13 @@ class MipsPay extends HTMLElement {
     this.listenToMessages();
   }
 
+  disconnectedCallback() {
+    if (this._cartRetryInterval) {
+      clearInterval(this._cartRetryInterval);
+      this._cartRetryInterval = null;
+    }
+  }
+
   attributeChangedCallback(name: string, oldVal: string, newVal: string) {
     if (!newVal || newVal === oldVal) return;
     if (name === "amount") {
@@ -134,6 +142,7 @@ class MipsPay extends HTMLElement {
       this.attachDOMEvents();
     }
   }
+
   public setAmount(amount: number) {
     if (!isNaN(amount) && amount >= 0) {
       this._veloAmount = amount;
@@ -141,15 +150,10 @@ class MipsPay extends HTMLElement {
       this.attachDOMEvents();
     }
   }
-  // private async loadCartAmount(): Promise<void> {
-  //   const { amount } = await this.getWixCartTotal();
-  //   if (amount > 0 && this._veloAmount === 0) {
-  //     this._cartAmount = amount;
-  //     this.render(); this.attachDOMEvents();
-  //   }
-  // }
+
+  // ─── Récupération du montant du panier ───────────────────────────────────
+
   private async loadCartAmount(): Promise<void> {
-    // Tente immédiatement
     const { amount } = await this.getWixCartTotal();
     if (amount > 0 && this._veloAmount === 0) {
       this._cartAmount = amount;
@@ -157,61 +161,191 @@ class MipsPay extends HTMLElement {
       this.attachDOMEvents();
       return;
     }
-
-    // Sinon observe le DOM parent jusqu'à 8 secondes
+    // Si pas trouvé immédiatement, lance le retry DOM
     this.waitForCartAmountInDOM();
   }
-  private waitForCartAmountInDOM() {
+
+  /**
+   * Tente toutes les stratégies disponibles pour obtenir le total du panier.
+   * Ordre : API REST Wix → wixEmbedsAPI → postMessage → fixedAmount
+   */
+  private async getWixCartTotal(): Promise<{ amount: number }> {
+    // 1. API REST Wix Stores (fonctionne sur site publié)
+    const apiAmount = await this.fetchCartFromWixAPI();
+    if (apiAmount > 0) return { amount: apiAmount };
+
+    // 2. wixEmbedsAPI (site publié uniquement)
+    try {
+      const w = window as any;
+      if (w.wixEmbedsAPI?.getCurrentCart) {
+        const cart = await w.wixEmbedsAPI.getCurrentCart();
+        const a = cart?.totals?.total || cart?.totalPrice || 0;
+        if (a > 0) return { amount: a };
+      }
+    } catch {
+      /* ignoré */
+    }
+
+    // 3. Cross-origin frame : postMessage vers le parent
+    if (this.isInCrossOriginFrame()) {
+      const a = await this.getAmountViaPostMessage();
+      return { amount: a > 0 ? a : this.fixedAmount };
+    }
+
+    // 4. Sélecteurs CSS Wix connus dans le DOM courant
+    const domAmount = this.readAmountFromDOM();
+    if (domAmount > 0) return { amount: domAmount };
+
+    // 5. Dernier recours : postMessage même si pas forcément cross-origin
+    const a = await this.getAmountViaPostMessage();
+    return { amount: a > 0 ? a : this.fixedAmount };
+  }
+
+  /**
+   * Appel à l'API REST publique Wix Stores v1/v2.
+   * Fonctionne uniquement sur site publié (pas en preview wixstudio.com).
+   */
+  private async fetchCartFromWixAPI(): Promise<number> {
+    try {
+      // Tente l'API ecom v1 (Wix Stores courant)
+      const res = await fetch(
+        "/_api/wix-ecommerce-storefront-web/api/v1/cart",
+        {
+          method: "GET",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+        },
+      );
+      if (res.ok) {
+        const data = await res.json();
+        const total =
+          data?.cart?.priceSummary?.total?.amount ||
+          data?.cart?.totals?.total ||
+          data?.totals?.total ||
+          0;
+        if (parseFloat(String(total)) > 0) return parseFloat(String(total));
+      }
+    } catch {
+      /* ignoré */
+    }
+
+    try {
+      // Tente l'API stores legacy
+      const res2 = await fetch("/_api/stores/v1/cart", {
+        method: "GET",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+      });
+      if (res2.ok) {
+        const data2 = await res2.json();
+        const total = data2?.cart?.totals?.total || data2?.totals?.total || 0;
+        if (parseFloat(String(total)) > 0) return parseFloat(String(total));
+      }
+    } catch {
+      /* ignoré */
+    }
+
+    return 0;
+  }
+
+  /**
+   * Lit le montant depuis les sélecteurs CSS Wix connus dans le DOM courant.
+   */
+  private readAmountFromDOM(): number {
     const selectors = [
+      // Sélecteurs data-hook stables Wix
       "[data-hook='cart-widget-total']",
       "[data-hook='cart-total']",
       "[data-hook='order-total']",
-      ".cart-total",
-      "[class*='CartTotal']",
+      "[data-hook='summary-item-value']:last-child",
+      "span[data-hook='price-value']",
+      // Classes CSS générées Wix (patterns)
+      "[class*='TotalsSection'] [class*='price']",
+      "[class*='totals'] [class*='value']",
+      "[class*='CartTotal'] [class*='price']",
       "[class*='orderSummary'] [class*='total']",
       "[class*='summary'] [class*='price']",
+      ".cart-total",
     ];
 
-    const tryRead = (): number => {
-      for (const sel of selectors) {
-        // Cherche dans le document courant ET dans tous les iframes accessibles
-        const els = [
-          ...Array.from(document.querySelectorAll(sel)),
-          ...this.getAccessibleFrameElements(sel),
-        ];
-        for (const el of els) {
-          const raw = (el.textContent || "")
-            .replace(/[^0-9.,]/g, "")
-            .replace(",", ".");
-          const val = parseFloat(raw);
-          if (!isNaN(val) && val > 0) return val;
-        }
+    // Cherche dans le document courant
+    for (const sel of selectors) {
+      const el = document.querySelector(sel);
+      if (el) {
+        const raw = (el.textContent || "")
+          .replace(/[^0-9.,]/g, "")
+          .replace(",", ".");
+        const val = parseFloat(raw);
+        if (!isNaN(val) && val > 0) return val;
       }
-      return 0;
-    };
+    }
 
-    // Retry toutes les 500ms pendant 10s
+    // Cherche dans les iframes same-origin accessibles
+    const frameResults = this.getAccessibleFrameElements(selectors);
+    for (const el of frameResults) {
+      const raw = (el.textContent || "")
+        .replace(/[^0-9.,]/g, "")
+        .replace(",", ".");
+      const val = parseFloat(raw);
+      if (!isNaN(val) && val > 0) return val;
+    }
+
+    return 0;
+  }
+
+  /**
+   * Retry toutes les 500ms pendant 10s pour trouver le montant dans le DOM.
+   * Utile quand Wix charge le panier en asynchrone après le montage du widget.
+   */
+  private waitForCartAmountInDOM() {
+    if (this._cartRetryInterval) return; // déjà en cours
     let attempts = 0;
-    const interval = setInterval(() => {
+
+    this._cartRetryInterval = setInterval(async () => {
       attempts++;
-      const amount = tryRead();
-      if (amount > 0 && this._veloAmount === 0) {
-        this._cartAmount = amount;
-        clearInterval(interval);
+
+      // Tente d'abord l'API REST (peut avoir chargé entre-temps)
+      const apiAmount = await this.fetchCartFromWixAPI();
+      if (apiAmount > 0 && this._veloAmount === 0) {
+        this._cartAmount = apiAmount;
+        clearInterval(this._cartRetryInterval!);
+        this._cartRetryInterval = null;
         this.render();
         this.attachDOMEvents();
+        return;
       }
-      if (attempts >= 20) clearInterval(interval); // stop après 10s
+
+      // Puis le DOM
+      const domAmount = this.readAmountFromDOM();
+      if (domAmount > 0 && this._veloAmount === 0) {
+        this._cartAmount = domAmount;
+        clearInterval(this._cartRetryInterval!);
+        this._cartRetryInterval = null;
+        this.render();
+        this.attachDOMEvents();
+        return;
+      }
+
+      if (attempts >= 20) {
+        // stop après 10s
+        clearInterval(this._cartRetryInterval!);
+        this._cartRetryInterval = null;
+      }
     }, 500);
   }
-  private getAccessibleFrameElements(selector: string): Element[] {
+
+  private getAccessibleFrameElements(selectors: string[]): Element[] {
     const results: Element[] = [];
     try {
       const frames = Array.from(document.querySelectorAll("iframe"));
       for (const frame of frames) {
         try {
           const doc = frame.contentDocument || frame.contentWindow?.document;
-          if (doc) results.push(...Array.from(doc.querySelectorAll(selector)));
+          if (doc) {
+            for (const sel of selectors) {
+              results.push(...Array.from(doc.querySelectorAll(sel)));
+            }
+          }
         } catch {
           /* cross-origin, ignoré */
         }
@@ -221,6 +355,7 @@ class MipsPay extends HTMLElement {
     }
     return results;
   }
+
   private isInCrossOriginFrame(): boolean {
     try {
       return window.parent !== window && !window.parent.document;
@@ -267,56 +402,21 @@ class MipsPay extends HTMLElement {
     });
   }
 
-  private async getWixCartTotal(): Promise<{ amount: number }> {
-    try {
-      if (this.isInCrossOriginFrame()) {
-        const a = await this.getAmountViaPostMessage();
-        return { amount: a > 0 ? a : this.fixedAmount };
-      }
-      const w = window as any;
-      if (w.wixEmbedsAPI?.getCurrentCart) {
-        const cart = await w.wixEmbedsAPI.getCurrentCart();
-        const a = cart?.totals?.total || cart?.totalPrice || 0;
-        if (a > 0) return { amount: a };
-      }
-      const wixSelectors = [
-        "[data-hook='cart-widget-total']",
-        "[data-hook='Checkmark'] + span", // variante
-        "[data-hook='summary-item-value']:last-child", // résumé commande
-        "[class*='TotalsSection'] [class*='price']",
-        "[class*='totals'] [class*='value']",
-        "[class*='CartTotal'] [class*='price']",
-        "span[data-hook='price-value']",
-      ];
-      for (const sel of wixSelectors) {
-        const el = document.querySelector(sel);
-        if (el) {
-          const a = parseFloat((el.textContent || "").replace(/[^0-9.]/g, ""));
-          if (!isNaN(a) && a > 0) return { amount: a };
-        }
-      }
-      // for (const sel of [
-      //   "[data-hook='cart-total']",
-      //   ".cart-total",
-      //   "[data-hook='order-total']",
-      // ]) {
-      //   const el = document.querySelector(sel);
-      //   if (el) {
-      //     const a = parseFloat((el.textContent || "").replace(/[^0-9.]/g, ""));
-      //     if (!isNaN(a) && a > 0) return { amount: a };
-      //   }
-      // }
-      const a = await this.getAmountViaPostMessage();
-      return { amount: a > 0 ? a : this.fixedAmount };
-    } catch {
-      return { amount: this.fixedAmount };
-    }
-  }
+  // ─── Écoute des messages ─────────────────────────────────────────────────
 
   private listenToMessages() {
     window.addEventListener("message", async (ev) => {
-      if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0)
-        await this.loadCartAmount();
+      // Mise à jour du panier depuis Velo ou autre source
+      if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0) {
+        const amt = parseFloat(String(ev.data.cartTotal || ev.data.total || 0));
+        if (amt > 0) {
+          this._cartAmount = amt;
+          this.render();
+          this.attachDOMEvents();
+        } else {
+          await this.loadCartAmount();
+        }
+      }
 
       const mipsOrigins = ["https://api.mips.mu", "https://mips.mu"];
       const fromMips = mipsOrigins.some((o) => ev.origin?.startsWith(o));
@@ -336,6 +436,9 @@ class MipsPay extends HTMLElement {
         this.handlePaymentFailed();
     });
   }
+
+  // ─── Credentials ─────────────────────────────────────────────────────────
+
   private async getCredentials(): Promise<Record<string, string> | null> {
     if (!this.encryptedCredentials) return null;
     try {
@@ -345,25 +448,9 @@ class MipsPay extends HTMLElement {
       return null;
     }
   }
-  // private handlePay() {
-  //   if (!this.hasCredentials) {
-  //     this.error = "Configuration MiPS non configurée.";
-  //     this.render();
-  //     this.attachDOMEvents();
-  //     return;
-  //   }
-  //   if (this.effectiveAmount <= 0) {
-  //     this.error = "Montant invalide ou panier vide.";
-  //     this.render();
-  //     this.attachDOMEvents();
-  //     return;
-  //   }
-  //   this.error = "";
-  //   this.showCustomerForm = true;
-  //   this.customerFormErrors = [];
-  //   this.render();
-  //   this.attachDOMEvents();
-  // }
+
+  // ─── Gestion du paiement ─────────────────────────────────────────────────
+
   private handlePay() {
     if (!this.hasCredentials) {
       this.error = "Configuration MiPS non configurée.";
@@ -384,6 +471,7 @@ class MipsPay extends HTMLElement {
           this._cartAmount = amount;
           this.error = "";
           this.showCustomerForm = true;
+          this.customerFormErrors = [];
         } else {
           this.error = "Montant invalide ou panier vide.";
         }
@@ -399,6 +487,7 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachDOMEvents();
   }
+
   private async processPayment() {
     const errors: string[] = [];
     if (!this.customerInfo.firstName.trim())
@@ -436,6 +525,7 @@ class MipsPay extends HTMLElement {
       const basicAuth = btoa(
         `${creds.auth_basic_username}:${creds.auth_basic_password}`,
       );
+
       const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
@@ -482,7 +572,7 @@ class MipsPay extends HTMLElement {
       let mipsData: any;
       try {
         mipsData = JSON.parse(raw);
-      } catch (e) {
+      } catch {
         console.error("Réponse non-JSON reçue:", raw.substring(0, 500));
         if (raw.includes("<iframe") || raw.includes("payment_zone")) {
           const iframeMatch = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
@@ -496,7 +586,6 @@ class MipsPay extends HTMLElement {
             return;
           }
         }
-
         throw new Error(
           `Le serveur a retourné une réponse invalide (${res.status})`,
         );
@@ -520,7 +609,6 @@ class MipsPay extends HTMLElement {
           mipsData.answer?.message || "Erreur création paiement MiPS",
         );
       }
-
       if (!paymentZoneData) {
         throw new Error("Aucune zone de paiement retournée");
       }
@@ -543,6 +631,9 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachDOMEvents();
   }
+
+  // ─── Utilitaires affichage ────────────────────────────────────────────────
+
   private getDisplayAmount(): string {
     const amt = this.effectiveAmount;
     return amt > 0
@@ -599,6 +690,8 @@ class MipsPay extends HTMLElement {
     }
   }
 
+  // ─── Callbacks paiement ───────────────────────────────────────────────────
+
   private handlePaymentSuccess() {
     this.showIframe = false;
     if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
@@ -631,6 +724,9 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachDOMEvents();
   }
+
+  // ─── Rendu HTML ───────────────────────────────────────────────────────────
+
   render() {
     const displayAmount = this.getDisplayAmount();
     const color = this.buttonColor;
