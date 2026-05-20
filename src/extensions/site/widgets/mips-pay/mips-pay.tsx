@@ -5,19 +5,35 @@ const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 async function deriveKey(passphrase: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const km = await crypto.subtle.importKey(
-    "raw", enc.encode(passphrase), { name: "PBKDF2" }, false, ["deriveKey"],
+    "raw",
+    enc.encode(passphrase),
+    { name: "PBKDF2" },
+    false,
+    ["deriveKey"],
   );
   return crypto.subtle.deriveKey(
-    { name: "PBKDF2", salt: enc.encode("mips-salt-fixed"), iterations: 100000, hash: "SHA-256" },
-    km, { name: "AES-GCM", length: 256 }, false, ["encrypt", "decrypt"],
+    {
+      name: "PBKDF2",
+      salt: enc.encode("mips-salt-fixed"),
+      iterations: 100000,
+      hash: "SHA-256",
+    },
+    km,
+    { name: "AES-GCM", length: 256 },
+    false,
+    ["encrypt", "decrypt"],
   );
 }
 
-async function decryptCredentials(ciphertext: string): Promise<Record<string, string>> {
+async function decryptCredentials(
+  ciphertext: string,
+): Promise<Record<string, string>> {
   const key = await deriveKey(DERIVE_PASSPHRASE);
   const combined = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
   const decrypted = await crypto.subtle.decrypt(
-    { name: "AES-GCM", iv: combined.slice(0, 12) }, key, combined.slice(12),
+    { name: "AES-GCM", iv: combined.slice(0, 12) },
+    key,
+    combined.slice(12),
   );
   return JSON.parse(new TextDecoder().decode(decrypted));
 }
@@ -29,9 +45,15 @@ function generateOrderId(): string {
 class MipsPay extends HTMLElement {
   static get observedAttributes() {
     return [
-      "button-text", "button-color", "amount", "currency",
-      "payment-title", "request-mode", "amount-source",
-      "amount-selector", "encrypted-credentials",
+      "button-text",
+      "button-color",
+      "amount",
+      "currency",
+      "payment-title",
+      "request-mode",
+      "amount-source",
+      "amount-selector",
+      "encrypted-credentials",
     ];
   }
 
@@ -39,17 +61,17 @@ class MipsPay extends HTMLElement {
   private loading = false;
   private error = "";
 
-  private _veloAmount  = 0;
-  private _cartAmount  = 0;
+  private _veloAmount = 0;
+  private _cartAmount = 0;
   private _initialized = false;
 
-  private showCustomerForm   = false;
+  private showCustomerForm = false;
   private customerFormErrors: string[] = [];
   private customerInfo = { firstName: "", lastName: "", phone: "", email: "" };
 
   private showIframe = false;
-  private iframeUrl  = "";
-  private paymentId  = "";
+  private iframeUrl = "";
+  private paymentId = "";
 
   constructor() {
     super();
@@ -61,16 +83,36 @@ class MipsPay extends HTMLElement {
     return this.fixedAmount;
   }
 
-  private get buttonText()           { return this.getAttribute("button-text")           || "Payer avec MiPS"; }
-  private get buttonColor()          { return this.getAttribute("button-color")          || "#2563EB"; }
-  private get fixedAmount()          { return parseFloat(this.getAttribute("amount") || "0") || 0; }
-  private get currency()             { return this.getAttribute("currency")              || "MUR"; }
-  private get paymentTitle()         { return this.getAttribute("payment-title")         || "Paiement"; }
-  private get requestMode()          { return this.getAttribute("request-mode")          || "simple"; }
-  private get amountSource()         { return this.getAttribute("amount-source")         || "fixed"; }
-  private get amountSelector()       { return this.getAttribute("amount-selector")       || ""; }
-  private get encryptedCredentials() { return this.getAttribute("encrypted-credentials") || ""; }
-  private get hasCredentials()       { return !!this.encryptedCredentials; }
+  private get buttonText() {
+    return this.getAttribute("button-text") || "Payer avec MiPS";
+  }
+  private get buttonColor() {
+    return this.getAttribute("button-color") || "#2563EB";
+  }
+  private get fixedAmount() {
+    return parseFloat(this.getAttribute("amount") || "0") || 0;
+  }
+  private get currency() {
+    return this.getAttribute("currency") || "MUR";
+  }
+  private get paymentTitle() {
+    return this.getAttribute("payment-title") || "Paiement";
+  }
+  private get requestMode() {
+    return this.getAttribute("request-mode") || "simple";
+  }
+  private get amountSource() {
+    return this.getAttribute("amount-source") || "fixed";
+  }
+  private get amountSelector() {
+    return this.getAttribute("amount-selector") || "";
+  }
+  private get encryptedCredentials() {
+    return this.getAttribute("encrypted-credentials") || "";
+  }
+  private get hasCredentials() {
+    return !!this.encryptedCredentials;
+  }
 
   connectedCallback() {
     if (this._initialized) return;
@@ -87,25 +129,104 @@ class MipsPay extends HTMLElement {
       const parsed = parseFloat(newVal);
       if (!isNaN(parsed) && parsed >= 0) this._veloAmount = parsed;
     }
-    if (this.isConnected) { this.render(); this.attachDOMEvents(); }
+    if (this.isConnected) {
+      this.render();
+      this.attachDOMEvents();
+    }
   }
   public setAmount(amount: number) {
     if (!isNaN(amount) && amount >= 0) {
       this._veloAmount = amount;
-      this.render(); this.attachDOMEvents();
+      this.render();
+      this.attachDOMEvents();
     }
   }
+  // private async loadCartAmount(): Promise<void> {
+  //   const { amount } = await this.getWixCartTotal();
+  //   if (amount > 0 && this._veloAmount === 0) {
+  //     this._cartAmount = amount;
+  //     this.render(); this.attachDOMEvents();
+  //   }
+  // }
   private async loadCartAmount(): Promise<void> {
+    // Tente immédiatement
     const { amount } = await this.getWixCartTotal();
     if (amount > 0 && this._veloAmount === 0) {
       this._cartAmount = amount;
-      this.render(); this.attachDOMEvents();
+      this.render();
+      this.attachDOMEvents();
+      return;
     }
-  }
 
+    // Sinon observe le DOM parent jusqu'à 8 secondes
+    this.waitForCartAmountInDOM();
+  }
+  private waitForCartAmountInDOM() {
+    const selectors = [
+      "[data-hook='cart-widget-total']",
+      "[data-hook='cart-total']",
+      "[data-hook='order-total']",
+      ".cart-total",
+      "[class*='CartTotal']",
+      "[class*='orderSummary'] [class*='total']",
+      "[class*='summary'] [class*='price']",
+    ];
+
+    const tryRead = (): number => {
+      for (const sel of selectors) {
+        // Cherche dans le document courant ET dans tous les iframes accessibles
+        const els = [
+          ...Array.from(document.querySelectorAll(sel)),
+          ...this.getAccessibleFrameElements(sel),
+        ];
+        for (const el of els) {
+          const raw = (el.textContent || "")
+            .replace(/[^0-9.,]/g, "")
+            .replace(",", ".");
+          const val = parseFloat(raw);
+          if (!isNaN(val) && val > 0) return val;
+        }
+      }
+      return 0;
+    };
+
+    // Retry toutes les 500ms pendant 10s
+    let attempts = 0;
+    const interval = setInterval(() => {
+      attempts++;
+      const amount = tryRead();
+      if (amount > 0 && this._veloAmount === 0) {
+        this._cartAmount = amount;
+        clearInterval(interval);
+        this.render();
+        this.attachDOMEvents();
+      }
+      if (attempts >= 20) clearInterval(interval); // stop après 10s
+    }, 500);
+  }
+  private getAccessibleFrameElements(selector: string): Element[] {
+    const results: Element[] = [];
+    try {
+      const frames = Array.from(document.querySelectorAll("iframe"));
+      for (const frame of frames) {
+        try {
+          const doc = frame.contentDocument || frame.contentWindow?.document;
+          if (doc) results.push(...Array.from(doc.querySelectorAll(selector)));
+        } catch {
+          /* cross-origin, ignoré */
+        }
+      }
+    } catch {
+      /* ignoré */
+    }
+    return results;
+  }
   private isInCrossOriginFrame(): boolean {
-    try { return window.parent !== window && !window.parent.document; }
-    catch { return true; }
+    try {
+      return window.parent !== window && !window.parent.document;
+    } catch {
+      return true;
+    }
   }
 
   private _cartPending = false;
@@ -115,21 +236,33 @@ class MipsPay extends HTMLElement {
     return new Promise((resolve) => {
       let done = false;
       const timeout = setTimeout(() => {
-        if (!done) { done = true; this._cartPending = false; resolve(0); }
+        if (!done) {
+          done = true;
+          this._cartPending = false;
+          resolve(0);
+        }
       }, 3000);
       const handler = (ev: MessageEvent) => {
         if ((ev.data?.type === "wixCart" || ev.data?.cartTotal) && !done) {
-          done = true; this._cartPending = false;
+          done = true;
+          this._cartPending = false;
           clearTimeout(timeout);
           window.removeEventListener("message", handler);
-          resolve(parseFloat(String(ev.data.cartTotal || ev.data.total || 0)) || 0);
+          resolve(
+            parseFloat(String(ev.data.cartTotal || ev.data.total || 0)) || 0,
+          );
         }
       };
       window.addEventListener("message", handler);
       try {
-        window.parent.postMessage({ type: "getCartTotal", source: "mips-payment" }, "*");
+        window.parent.postMessage(
+          { type: "getCartTotal", source: "mips-payment" },
+          "*",
+        );
       } catch {
-        this._cartPending = false; clearTimeout(timeout); resolve(0);
+        this._cartPending = false;
+        clearTimeout(timeout);
+        resolve(0);
       }
     });
   }
@@ -146,13 +279,33 @@ class MipsPay extends HTMLElement {
         const a = cart?.totals?.total || cart?.totalPrice || 0;
         if (a > 0) return { amount: a };
       }
-      for (const sel of ["[data-hook='cart-total']", ".cart-total", "[data-hook='order-total']"]) {
+      const wixSelectors = [
+        "[data-hook='cart-widget-total']",
+        "[data-hook='Checkmark'] + span", // variante
+        "[data-hook='summary-item-value']:last-child", // résumé commande
+        "[class*='TotalsSection'] [class*='price']",
+        "[class*='totals'] [class*='value']",
+        "[class*='CartTotal'] [class*='price']",
+        "span[data-hook='price-value']",
+      ];
+      for (const sel of wixSelectors) {
         const el = document.querySelector(sel);
         if (el) {
           const a = parseFloat((el.textContent || "").replace(/[^0-9.]/g, ""));
           if (!isNaN(a) && a > 0) return { amount: a };
         }
       }
+      // for (const sel of [
+      //   "[data-hook='cart-total']",
+      //   ".cart-total",
+      //   "[data-hook='order-total']",
+      // ]) {
+      //   const el = document.querySelector(sel);
+      //   if (el) {
+      //     const a = parseFloat((el.textContent || "").replace(/[^0-9.]/g, ""));
+      //     if (!isNaN(a) && a > 0) return { amount: a };
+      //   }
+      // }
       const a = await this.getAmountViaPostMessage();
       return { amount: a > 0 ? a : this.fixedAmount };
     } catch {
@@ -170,156 +323,231 @@ class MipsPay extends HTMLElement {
 
       if (
         ev.data?.type === "mips_payment_success" ||
-        (fromMips && (ev.data?.status === "completed" || ev.data?.payment_status === "success"))
-      ) this.handlePaymentSuccess();
+        (fromMips &&
+          (ev.data?.status === "completed" ||
+            ev.data?.payment_status === "success"))
+      )
+        this.handlePaymentSuccess();
 
       if (
         ev.data?.type === "mips_payment_failed" ||
         (fromMips && ev.data?.status === "failed")
-      ) this.handlePaymentFailed();
+      )
+        this.handlePaymentFailed();
     });
   }
   private async getCredentials(): Promise<Record<string, string> | null> {
     if (!this.encryptedCredentials) return null;
-    try { return await decryptCredentials(this.encryptedCredentials); }
-    catch { this.error = "Erreur de déchiffrement des credentials."; return null; }
+    try {
+      return await decryptCredentials(this.encryptedCredentials);
+    } catch {
+      this.error = "Erreur de déchiffrement des credentials.";
+      return null;
+    }
   }
+  // private handlePay() {
+  //   if (!this.hasCredentials) {
+  //     this.error = "Configuration MiPS non configurée.";
+  //     this.render();
+  //     this.attachDOMEvents();
+  //     return;
+  //   }
+  //   if (this.effectiveAmount <= 0) {
+  //     this.error = "Montant invalide ou panier vide.";
+  //     this.render();
+  //     this.attachDOMEvents();
+  //     return;
+  //   }
+  //   this.error = "";
+  //   this.showCustomerForm = true;
+  //   this.customerFormErrors = [];
+  //   this.render();
+  //   this.attachDOMEvents();
+  // }
   private handlePay() {
     if (!this.hasCredentials) {
       this.error = "Configuration MiPS non configurée.";
-      this.render(); this.attachDOMEvents(); return;
-    }
-    if (this.effectiveAmount <= 0) {
-      this.error = "Montant invalide ou panier vide.";
-      this.render(); this.attachDOMEvents(); return;
-    }
-    this.error = "";
-    this.showCustomerForm = true;
-    this.customerFormErrors = [];
-    this.render(); this.attachDOMEvents();
-  }
-
- private async processPayment() {
-  const errors: string[] = [];
-  if (!this.customerInfo.firstName.trim()) errors.push("Le prénom est requis");
-  if (!this.customerInfo.lastName.trim())  errors.push("Le nom est requis");
-  if (!this.customerInfo.phone.trim())     errors.push("Le téléphone est requis");
-  else if (!/^[0-9\s+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
-    errors.push("Numéro de téléphone invalide");
-
-  if (errors.length > 0) {
-    this.customerFormErrors = errors;
-    this.render(); 
-    this.attachDOMEvents(); 
-    return;
-  }
-
-  this.showCustomerForm = false;
-  this.loading = true;
-  this.error = "";
-  this.render(); 
-  this.attachDOMEvents();
-
-  try {
-    const creds = await this.getCredentials();
-    if (!creds) {
-      this.loading = false; 
-      this.render(); 
-      this.attachDOMEvents(); 
+      this.render();
+      this.attachDOMEvents();
       return;
     }
 
-    const id_order = generateOrderId();
-    this.paymentId = id_order;
-    const amount = this.effectiveAmount;
-    const basicAuth = btoa(`${creds.auth_basic_username}:${creds.auth_basic_password}`);
-    const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "Authorization": `Basic ${basicAuth}`,
-      },
-      body: JSON.stringify({
-        authentify: {
-          id_merchant:      creds.id_merchant,
-          id_entity:        creds.id_entity,
-          id_operator:      creds.id_operator,
-          operator_password: creds.operator_password,
-        },
-        order: { id_order, currency: this.currency, amount },
-        request_mode: this.requestMode,
-        touchpoint: "web",
-        iframe_behavior: {
-          custom_redirection_url: `${window.location.origin}/thank-you-page`,
-          language: "FR",
-        },
-        additional_params: [
-          { param_name: "first_name",   param_value: this.customerInfo.firstName.trim() },
-          { param_name: "last_name",    param_value: this.customerInfo.lastName.trim() },
-          { param_name: "phone_number", param_value: this.customerInfo.phone.trim() },
-          { param_name: "client_email", param_value: this.customerInfo.email.trim() },
-        ],
-      }),
-    });
+    // Si montant encore 0, retente une lecture avant d'afficher l'erreur
+    if (this.effectiveAmount <= 0) {
+      this.loading = true;
+      this.render();
+      this.attachDOMEvents();
 
-    const raw = await res.text();
-    let mipsData: any;
-    try {
-      mipsData = JSON.parse(raw);
-    } catch (e) {
-      console.error("Réponse non-JSON reçue:", raw.substring(0, 500));
-      if (raw.includes('<iframe') || raw.includes('payment_zone')) {
-        const iframeMatch = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-        if (iframeMatch?.[1]) {
-          this.iframeUrl = iframeMatch[1];
-          this.showIframe = true;
+      this.getWixCartTotal().then(({ amount }) => {
+        this.loading = false;
+        if (amount > 0) {
+          this._cartAmount = amount;
           this.error = "";
-          this.loading = false;
-          this.render();
-          this.attachDOMEvents();
-          return;
+          this.showCustomerForm = true;
+        } else {
+          this.error = "Montant invalide ou panier vide.";
         }
-      }
-      
-      throw new Error(`Le serveur a retourné une réponse invalide (${res.status})`);
+        this.render();
+        this.attachDOMEvents();
+      });
+      return;
     }
 
-    if (!res.ok) {
-      const errorMsg = mipsData.answer?.message || mipsData.message || `Erreur HTTP ${res.status}`;
-      throw new Error(errorMsg);
-    }
-
-    const opStatus = mipsData.answer?.operation_status || mipsData.operation_status;
-    const paymentZoneData = mipsData.answer?.payment_zone_data || mipsData.payment_zone_data;
-
-    if (opStatus !== "success") {
-      throw new Error(mipsData.answer?.message || "Erreur création paiement MiPS");
-    }
-    
-    if (!paymentZoneData) {
-      throw new Error("Aucune zone de paiement retournée");
-    }
-
-    const iframeMatch = paymentZoneData.match(/<iframe[^>]+src=["']([^"']+)["']/i);
-    this.iframeUrl = iframeMatch?.[1] || URL.createObjectURL(
-      new Blob([paymentZoneData], { type: "text/html" })
-    );
-    this.showIframe = true;
     this.error = "";
-
-  } catch (err: any) {
-    console.error("Erreur paiement:", err);
-    this.error = err.message || "Erreur réseau. Vérifiez vos identifiants MiPS.";
+    this.showCustomerForm = true;
+    this.customerFormErrors = [];
+    this.render();
+    this.attachDOMEvents();
   }
+  private async processPayment() {
+    const errors: string[] = [];
+    if (!this.customerInfo.firstName.trim())
+      errors.push("Le prénom est requis");
+    if (!this.customerInfo.lastName.trim()) errors.push("Le nom est requis");
+    if (!this.customerInfo.phone.trim()) errors.push("Le téléphone est requis");
+    else if (!/^[0-9\s+\-]{7,15}$/.test(this.customerInfo.phone.trim()))
+      errors.push("Numéro de téléphone invalide");
 
-  this.loading = false;
-  this.render(); 
-  this.attachDOMEvents();
-}
+    if (errors.length > 0) {
+      this.customerFormErrors = errors;
+      this.render();
+      this.attachDOMEvents();
+      return;
+    }
+
+    this.showCustomerForm = false;
+    this.loading = true;
+    this.error = "";
+    this.render();
+    this.attachDOMEvents();
+
+    try {
+      const creds = await this.getCredentials();
+      if (!creds) {
+        this.loading = false;
+        this.render();
+        this.attachDOMEvents();
+        return;
+      }
+
+      const id_order = generateOrderId();
+      this.paymentId = id_order;
+      const amount = this.effectiveAmount;
+      const basicAuth = btoa(
+        `${creds.auth_basic_username}:${creds.auth_basic_password}`,
+      );
+      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Accept: "application/json",
+          Authorization: `Basic ${basicAuth}`,
+        },
+        body: JSON.stringify({
+          authentify: {
+            id_merchant: creds.id_merchant,
+            id_entity: creds.id_entity,
+            id_operator: creds.id_operator,
+            operator_password: creds.operator_password,
+          },
+          order: { id_order, currency: this.currency, amount },
+          request_mode: this.requestMode,
+          touchpoint: "web",
+          iframe_behavior: {
+            custom_redirection_url: `${window.location.origin}/thank-you-page`,
+            language: "FR",
+          },
+          additional_params: [
+            {
+              param_name: "first_name",
+              param_value: this.customerInfo.firstName.trim(),
+            },
+            {
+              param_name: "last_name",
+              param_value: this.customerInfo.lastName.trim(),
+            },
+            {
+              param_name: "phone_number",
+              param_value: this.customerInfo.phone.trim(),
+            },
+            {
+              param_name: "client_email",
+              param_value: this.customerInfo.email.trim(),
+            },
+          ],
+        }),
+      });
+
+      const raw = await res.text();
+      let mipsData: any;
+      try {
+        mipsData = JSON.parse(raw);
+      } catch (e) {
+        console.error("Réponse non-JSON reçue:", raw.substring(0, 500));
+        if (raw.includes("<iframe") || raw.includes("payment_zone")) {
+          const iframeMatch = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
+          if (iframeMatch?.[1]) {
+            this.iframeUrl = iframeMatch[1];
+            this.showIframe = true;
+            this.error = "";
+            this.loading = false;
+            this.render();
+            this.attachDOMEvents();
+            return;
+          }
+        }
+
+        throw new Error(
+          `Le serveur a retourné une réponse invalide (${res.status})`,
+        );
+      }
+
+      if (!res.ok) {
+        const errorMsg =
+          mipsData.answer?.message ||
+          mipsData.message ||
+          `Erreur HTTP ${res.status}`;
+        throw new Error(errorMsg);
+      }
+
+      const opStatus =
+        mipsData.answer?.operation_status || mipsData.operation_status;
+      const paymentZoneData =
+        mipsData.answer?.payment_zone_data || mipsData.payment_zone_data;
+
+      if (opStatus !== "success") {
+        throw new Error(
+          mipsData.answer?.message || "Erreur création paiement MiPS",
+        );
+      }
+
+      if (!paymentZoneData) {
+        throw new Error("Aucune zone de paiement retournée");
+      }
+
+      const iframeMatch = paymentZoneData.match(
+        /<iframe[^>]+src=["']([^"']+)["']/i,
+      );
+      this.iframeUrl =
+        iframeMatch?.[1] ||
+        URL.createObjectURL(new Blob([paymentZoneData], { type: "text/html" }));
+      this.showIframe = true;
+      this.error = "";
+    } catch (err: any) {
+      console.error("Erreur paiement:", err);
+      this.error =
+        err.message || "Erreur réseau. Vérifiez vos identifiants MiPS.";
+    }
+
+    this.loading = false;
+    this.render();
+    this.attachDOMEvents();
+  }
   private getDisplayAmount(): string {
     const amt = this.effectiveAmount;
-    return amt > 0 ? `${amt.toFixed(2)} ${this.currency}` : `-- ${this.currency}`;
+    return amt > 0
+      ? `${amt.toFixed(2)} ${this.currency}`
+      : `-- ${this.currency}`;
   }
 
   private attachDOMEvents() {
@@ -331,20 +559,34 @@ class MipsPay extends HTMLElement {
       nb.addEventListener("click", fn);
     };
 
-    replace("mips-pay-btn",       () => this.handlePay());
-    replace("mips-confirm-pay",   () => this.processPayment());
-    replace("mips-cancel-form",   () => { this.showCustomerForm = false; this.customerFormErrors = []; this.render(); this.attachDOMEvents(); });
-    replace("mips-cancel-form-2", () => { this.showCustomerForm = false; this.customerFormErrors = []; this.render(); this.attachDOMEvents(); });
-    replace("mips-iframe-close",  () => {
+    replace("mips-pay-btn", () => this.handlePay());
+    replace("mips-confirm-pay", () => this.processPayment());
+    replace("mips-cancel-form", () => {
+      this.showCustomerForm = false;
+      this.customerFormErrors = [];
+      this.render();
+      this.attachDOMEvents();
+    });
+    replace("mips-cancel-form-2", () => {
+      this.showCustomerForm = false;
+      this.customerFormErrors = [];
+      this.render();
+      this.attachDOMEvents();
+    });
+    replace("mips-iframe-close", () => {
       this.showIframe = false;
-      if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
+      if (this.iframeUrl.startsWith("blob:"))
+        URL.revokeObjectURL(this.iframeUrl);
       this.iframeUrl = "";
-      this.render(); this.attachDOMEvents();
+      this.render();
+      this.attachDOMEvents();
     });
 
     const fields: Array<[string, keyof typeof this.customerInfo]> = [
-      ["mips-firstname", "firstName"], ["mips-lastname", "lastName"],
-      ["mips-phone",     "phone"],     ["mips-email",    "email"],
+      ["mips-firstname", "firstName"],
+      ["mips-lastname", "lastName"],
+      ["mips-phone", "phone"],
+      ["mips-email", "email"],
     ];
     for (const [id, key] of fields) {
       const el = this.shadow.getElementById(id) as HTMLInputElement | null;
@@ -363,7 +605,8 @@ class MipsPay extends HTMLElement {
     this.iframeUrl = "";
     this.error = "";
     const div = document.createElement("div");
-    div.style.cssText = "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
+    div.style.cssText =
+      "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
     div.innerHTML = `
       <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;font-family:system-ui;">
         <div style="font-size:48px;color:#16a34a;">✓</div>
@@ -376,7 +619,8 @@ class MipsPay extends HTMLElement {
         </button>
       </div>`;
     document.body.appendChild(div);
-    this.render(); this.attachDOMEvents();
+    this.render();
+    this.attachDOMEvents();
   }
 
   private handlePaymentFailed() {
@@ -384,11 +628,12 @@ class MipsPay extends HTMLElement {
     if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
     this.iframeUrl = "";
     this.error = "Le paiement a échoué. Veuillez réessayer.";
-    this.render(); this.attachDOMEvents();
+    this.render();
+    this.attachDOMEvents();
   }
   render() {
     const displayAmount = this.getDisplayAmount();
-    const color   = this.buttonColor;
+    const color = this.buttonColor;
     const isReady = this.hasCredentials;
 
     const btnLabel = this.loading
@@ -525,7 +770,9 @@ class MipsPay extends HTMLElement {
         <div class="secure-badge">🔒 Paiement sécurisé via <strong>MiPS</strong></div>
       </div>
 
-      ${this.showCustomerForm ? `
+      ${
+        this.showCustomerForm
+          ? `
         <div class="overlay">
           <div class="modal">
             <button id="mips-cancel-form" class="modal-close" title="Fermer">✕</button>
@@ -535,10 +782,14 @@ class MipsPay extends HTMLElement {
               Montant à payer
               <span>${displayAmount}</span>
             </div>
-            ${this.customerFormErrors.length > 0 ? `
+            ${
+              this.customerFormErrors.length > 0
+                ? `
               <div class="form-errors">
                 ${this.customerFormErrors.map((e) => `<p>• ${e}</p>`).join("")}
-              </div>` : ""}
+              </div>`
+                : ""
+            }
             <div class="form-row">
               <div class="form-group">
                 <label>Prénom *</label>
@@ -562,9 +813,13 @@ class MipsPay extends HTMLElement {
             </button>
             <button id="mips-cancel-form-2" class="cancel-btn">Annuler</button>
           </div>
-        </div>` : ""}
+        </div>`
+          : ""
+      }
 
-      ${this.showIframe && this.iframeUrl ? `
+      ${
+        this.showIframe && this.iframeUrl
+          ? `
         <div class="iframe-overlay">
           <div class="iframe-container">
             <div class="iframe-header">
@@ -580,7 +835,9 @@ class MipsPay extends HTMLElement {
               </iframe>
             </div>
           </div>
-        </div>` : ""}
+        </div>`
+          : ""
+      }
     `;
   }
 }
