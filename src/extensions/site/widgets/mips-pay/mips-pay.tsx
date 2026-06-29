@@ -518,10 +518,11 @@ class MipsPay extends HTMLElement {
 
       const body = {
         authentify: {
-          id_merchant: creds.id_merchant,
-          id_entity: creds.id_entity,
-          id_operator: creds.id_operator,
-          operator_password: creds.operator_password,
+          id_merchant: creds.id_merchant || "5VTqAZqUoJWMRnrzS2m2dFXUy7HYAnTz",
+          id_entity: creds.id_entity || "ZffP7lOOTO5LcT5a1rqOhbXDDt1z1qJQ",
+          id_operator: creds.id_operator || "XbDEVgg9ZsqljA6xU08Xe5T6ElzxUv3E",
+          operator_password:
+            creds.operator_password || "Z4eHk201ou493h7234cUloy3bfxCqMes",
         },
         order: {
           id_order,
