@@ -493,14 +493,14 @@ class MipsPay extends HTMLElement {
         (f) => creds[f] && creds[f].length > 0,
       );
       // Détection de valeurs corrompues (chaînes aléatoires > 20 chars)
-      const looksCorrupted = ["id_merchant", "id_entity", "id_operator"].some(
-        (f) =>
-          creds[f] &&
-          creds[f].length > 20 &&
-          /^[A-Za-z0-9]{20,}$/.test(creds[f]),
-      );
+      // const looksCorrupted = ["id_merchant", "id_entity", "id_operator"].some(
+      //   (f) =>
+      //     creds[f] &&
+      //     creds[f].length > 20 &&
+      //     /^[A-Za-z0-9]{20,}$/.test(creds[f]),
+      // );
 
-      if (!hasValidCreds || looksCorrupted) {
+      if (!hasValidCreds) {
         this.error =
           "Credentials invalides ou corrompus. Veuillez les reconfigurer dans le panel Wix.";
         this.loading = false;
