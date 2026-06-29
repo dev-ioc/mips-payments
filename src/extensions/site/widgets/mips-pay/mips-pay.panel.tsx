@@ -25,6 +25,7 @@ import "@wix/design-system/styles.global.css";
 import { DeleteIcon, Key, Settings } from "lucide-react";
 
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
+
 async function deriveKey(passphrase: string): Promise<CryptoKey> {
   const enc = new TextEncoder();
   const keyMaterial = await crypto.subtle.importKey(
@@ -60,14 +61,24 @@ async function encryptCredentials(data: object): Promise<string> {
   const combined = new Uint8Array(iv.byteLength + encrypted.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), iv.byteLength);
-  return btoa(String.fromCharCode(...combined));
+  // ✅ base64url : remplace +→- /→_ et retire le padding =
+  // Évite la corruption par Wix lors du stockage via widget.setProp()
+  return btoa(String.fromCharCode(...combined))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=/g, "");
 }
 
 async function decryptCredentials(
   ciphertext: string,
 ): Promise<Record<string, string>> {
   const key = await deriveKey(DERIVE_PASSPHRASE);
-  const combined = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
+  // ✅ Reconvertir base64url → base64 standard avant décodage
+  const base64 = ciphertext
+    .replace(/-/g, "+")
+    .replace(/_/g, "/")
+    .padEnd(ciphertext.length + ((4 - (ciphertext.length % 4)) % 4), "=");
+  const combined = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
   const iv = combined.slice(0, 12);
   const data = combined.slice(12);
   const decrypted = await crypto.subtle.decrypt(
@@ -109,12 +120,13 @@ const EMPTY_CREDS: CredentialsForm = {
   auth_basic_username: "",
   auth_basic_password: "",
 };
+
 const CURRENCY_OPTIONS = [
+  { id: "MGA", value: "MGA — Ariary malgache" },
   { id: "MUR", value: "MUR — Roupie mauricienne" },
   { id: "USD", value: "USD — Dollar américain" },
   { id: "EUR", value: "EUR — Euro" },
   { id: "GBP", value: "GBP — Livre sterling" },
-  { id: "MGA", value: "MGA — Ariary malgache" },
 ];
 
 const REQUEST_MODE_OPTIONS = [
@@ -179,7 +191,7 @@ const Panel: FC = () => {
     "button-text": "Payer avec MiPS",
     "button-color": "#2563EB",
     amount: "",
-    currency: "MUR",
+    currency: "MGA",
     "payment-title": "Paiement",
     "request-mode": "simple",
     "amount-source": "fixed",
@@ -219,6 +231,7 @@ const Panel: FC = () => {
         if (v && v !== "undefined" && v !== "null") loaded[k] = v;
       });
       setConfig((prev) => ({ ...prev, ...loaded }));
+
       const encrypted = await widget.getProp("encrypted-credentials");
       if (
         encrypted &&
@@ -240,6 +253,7 @@ const Panel: FC = () => {
             auth_basic_password: dec.auth_basic_password || "",
           });
         } catch {
+          // Credentials stockés mais non déchiffrables (ancienne version)
           setCredsSaved(true);
         }
       }
@@ -249,6 +263,7 @@ const Panel: FC = () => {
       setLoadingConfig(false);
     }
   };
+
   const updateProp = useCallback(
     async <K extends keyof WidgetConfig>(key: K, value: string) => {
       setConfig((prev) => ({ ...prev, [key]: value }));
@@ -264,6 +279,7 @@ const Panel: FC = () => {
   const updateCred = (key: keyof CredentialsForm, value: string) => {
     setCreds((prev) => ({ ...prev, [key]: value }));
   };
+
   const handleSaveCredentials = async () => {
     const required: (keyof CredentialsForm)[] = [
       "id_merchant",
@@ -360,11 +376,12 @@ const Panel: FC = () => {
         <SidePanel.Content noPadding stretchVertically>
           <SidePanel.Field>
             <Text weight="bold" size="small">
-              <Settings size={20}/> Configuration MiPS
+              <Settings size={20} /> Configuration MiPS
             </Text>
           </SidePanel.Field>
 
           <Divider />
+
           <SidePanel.Field>
             <Text weight="bold" size="small">
               <Key size={20} /> Credentials MiPS
@@ -386,6 +403,7 @@ const Panel: FC = () => {
               </SectionHelper>
             </SidePanel.Field>
           )}
+
           {!showCredsForm && (
             <SidePanel.Field>
               <div style={{ display: "flex", gap: "8px", flexWrap: "wrap" }}>
@@ -409,6 +427,7 @@ const Panel: FC = () => {
               </div>
             </SidePanel.Field>
           )}
+
           {credsStatus === "success" && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="success">
@@ -416,21 +435,23 @@ const Panel: FC = () => {
               </SectionHelper>
             </SidePanel.Field>
           )}
-          {credsStatus === "error" && (
+          {credsStatus === "error" && !showCredsForm && (
             <SidePanel.Field>
               <SectionHelper fullWidth appearance="danger">
                 {credsMessage}
               </SectionHelper>
             </SidePanel.Field>
           )}
+
           {showCredsForm && (
             <>
               <SidePanel.Field>
                 <SectionHelper fullWidth appearance="standard">
-                  Les credentials sont chiffrés avec AES-256-GCM avant
-                  stockage. Ils ne quittent jamais votre navigateur en clair.
+                  Les credentials sont chiffrés avec AES-256-GCM avant stockage.
+                  Ils ne quittent jamais votre navigateur en clair.
                 </SectionHelper>
               </SidePanel.Field>
+
               <SidePanel.Field>
                 <Text size="tiny" secondary>
                   — Identifiants MiPS —
@@ -445,7 +466,6 @@ const Panel: FC = () => {
                 required
                 hint="id_merchant fourni par MiPS"
               />
-
               <SecureInput
                 label="Identifiant Entité"
                 value={creds.id_entity}
@@ -454,7 +474,6 @@ const Panel: FC = () => {
                 required
                 hint="id_entity fourni par MiPS"
               />
-
               <SecureInput
                 label="Identifiant Opérateur"
                 value={creds.id_operator}
@@ -463,7 +482,6 @@ const Panel: FC = () => {
                 required
                 hint="id_operator fourni par MiPS"
               />
-
               <SecureInput
                 label="Mot de passe Opérateur"
                 value={creds.operator_password}
@@ -487,7 +505,6 @@ const Panel: FC = () => {
                 required
                 hint="Identifiant pour l'authentification HTTP Basic Auth"
               />
-
               <SecureInput
                 label="Mot de passe MiPS"
                 value={creds.auth_basic_password}
@@ -510,7 +527,6 @@ const Panel: FC = () => {
                 placeholder="salt IMN"
                 hint="Utilisé pour déchiffrer les callbacks IMN"
               />
-
               <SecureInput
                 label="Clé de chiffrement MiPS"
                 value={creds.imn_cipher_key}
@@ -518,6 +534,7 @@ const Panel: FC = () => {
                 placeholder="cipher key IMN"
                 hint="Clé utilisée pour déchiffrer les callbacks IMN"
               />
+
               <SidePanel.Field>
                 <div style={{ display: "flex", gap: "8px" }}>
                   <Button
@@ -525,11 +542,7 @@ const Panel: FC = () => {
                     disabled={savingCreds}
                     size="small"
                   >
-                    {savingCreds ? (
-                      <Loader size="tiny" />
-                    ) : (
-                      "Sauvegarder"
-                    )}
+                    {savingCreds ? <Loader size="tiny" /> : "Sauvegarder"}
                   </Button>
                   <Button
                     size="small"
@@ -555,6 +568,7 @@ const Panel: FC = () => {
           )}
 
           <Divider />
+
           <SidePanel.Field>
             <Text weight="bold" size="small">
               Apparence
@@ -655,11 +669,12 @@ const Panel: FC = () => {
             </FormField>
           </SidePanel.Field>
         </SidePanel.Content>
+
         <SidePanel.Footer noPadding>
           <SectionHelper fullWidth appearance="warning" border="topBottom">
-            Chiffrement AES-256-GCM. Vos credentials ne sont jamais envoyés à
-            un serveur tiers — ils sont déchiffrés uniquement dans le navigateur
-            de l'acheteur au moment du paiement.
+            Chiffrement AES-256-GCM. Vos credentials ne sont jamais envoyés à un
+            serveur tiers — ils sont déchiffrés uniquement dans le navigateur de
+            l'acheteur au moment du paiement.
           </SectionHelper>
         </SidePanel.Footer>
       </SidePanel>
