@@ -465,6 +465,10 @@ class MipsPay extends HTMLElement {
 
   private async getCredentials(): Promise<Record<string, string> | null> {
     console.log("getCredentials", this.encryptedCredentials);
+    console.log(
+      "getCredentials",
+      decryptCredentials(this.encryptedCredentials),
+    );
     if (!this.encryptedCredentials) return null;
     try {
       return await decryptCredentials(this.encryptedCredentials);
