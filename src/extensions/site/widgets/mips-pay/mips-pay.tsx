@@ -553,7 +553,7 @@ class MipsPay extends HTMLElement {
           },
         ],
       };
-
+      console.log("body data :", body);
       const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
