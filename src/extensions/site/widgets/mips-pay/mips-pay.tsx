@@ -5,10 +5,11 @@
  *   https://features-mips-payments.dev-mdg.workers.dev/_wix_126f0f6e-custom-elements/mips-pay.js
  *
  * Stratégies de récupération du montant (dans l'ordre) :
- *  1. Lecture DOM directe
- *  2. Retry DOM toutes les 500ms pendant 10s
- *  3. API REST Wix directe (site publié)
- *  4. Au clic si toujours 0 → nouvelle tentative avant d'afficher l'erreur
+ *  1. API proxy serveur (worker) → transmet les cookies Wix
+ *  2. API REST Wix directe (site publié)
+ *  3. wixEmbedsAPI (site publié)
+ *  4. Retry DOM toutes les 500ms pendant 10s
+ *  5. Au clic si toujours 0 → nouvelle tentative avant d'afficher l'erreur
  */
 
 const MIPS_PROXY = "https://mips-payments-proxy.dev-mdg.workers.dev";
@@ -42,12 +43,7 @@ async function decryptCredentials(
   ciphertext: string,
 ): Promise<Record<string, string>> {
   const key = await deriveKey(DERIVE_PASSPHRASE);
-  // ✅ Reconvertir base64url → base64 standard avant décodage
-  const base64 = ciphertext
-    .replace(/-/g, "+")
-    .replace(/_/g, "/")
-    .padEnd(ciphertext.length + ((4 - (ciphertext.length % 4)) % 4), "=");
-  const combined = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0));
+  const combined = Uint8Array.from(atob(ciphertext), (c) => c.charCodeAt(0));
   const decrypted = await crypto.subtle.decrypt(
     { name: "AES-GCM", iv: combined.slice(0, 12) },
     key,
@@ -57,10 +53,7 @@ async function decryptCredentials(
 }
 
 function generateOrderId(): string {
-  return `WIX${Date.now().toString().slice(-10)}${Math.random()
-    .toString(36)
-    .substring(2, 8)
-    .toUpperCase()}`;
+  return `WIX${Date.now().toString().slice(-10)}${Math.random().toString(36).substring(2, 8).toUpperCase()}`;
 }
 
 class MipsPay extends HTMLElement {
@@ -86,7 +79,6 @@ class MipsPay extends HTMLElement {
   private _cartAmount = 0;
   private _initialized = false;
   private _cartRetryInterval: ReturnType<typeof setInterval> | null = null;
-  private _domObserver: MutationObserver | null = null;
 
   private showCustomerForm = false;
   private customerFormErrors: string[] = [];
@@ -117,7 +109,7 @@ class MipsPay extends HTMLElement {
     return parseFloat(this.getAttribute("amount") || "0") || 0;
   }
   private get currency() {
-    return this.getAttribute("currency") || "MGA";
+    return this.getAttribute("currency") || "MUR";
   }
   private get paymentTitle() {
     return this.getAttribute("payment-title") || "Paiement";
@@ -138,18 +130,9 @@ class MipsPay extends HTMLElement {
     return !!this.encryptedCredentials;
   }
 
-  // ✅ Affiche "Ar" pour MGA, sinon le code devise
-  private getDisplayAmount(): string {
-    const amt = this.effectiveAmount;
-    const displayCurrency = this.currency === "MGA" ? "Ar" : this.currency;
-    return amt > 0
-      ? `${amt.toFixed(2)} ${displayCurrency}`
-      : `-- ${displayCurrency}`;
-  }
-
-  // ─── Cart / DOM ───────────────────────────────────────────────────────────
-
+  private _domObserver: MutationObserver | null = null;
   private observeCartChanges() {
+    // Observer les changements dans le DOM (quand le prix change)
     const observer = new MutationObserver(() => {
       const newAmount = this.readAmountFromDOM();
       if (newAmount > 0 && newAmount !== this._cartAmount) {
@@ -165,12 +148,16 @@ class MipsPay extends HTMLElement {
         this.attachDOMEvents();
       }
     });
+
+    // Observer tout le body pour les changements
     observer.observe(document.body, {
       childList: true,
       subtree: true,
       characterData: true,
       characterDataOldValue: true,
     });
+
+    // Stocker l'observer pour le nettoyer plus tard
     this._domObserver = observer;
   }
 
@@ -215,6 +202,8 @@ class MipsPay extends HTMLElement {
     }
   }
 
+  // ─── Récupération du montant ──────────────────────────────────────────────
+
   private async loadCartAmount(): Promise<void> {
     const { amount } = await this.getWixCartTotal();
     if (amount > 0 && this._veloAmount === 0) {
@@ -223,21 +212,29 @@ class MipsPay extends HTMLElement {
       this.attachDOMEvents();
       return;
     }
+    // Pas trouvé immédiatement → retry toutes les 500ms
     this.waitForCartAmountInDOM();
   }
 
+  /**
+   * Tente toutes les stratégies dans l'ordre de fiabilité.
+   */
   private async getWixCartTotal(): Promise<{ amount: number }> {
+    // 1. Lecture DOM directe (la plus fiable en preview Wix)
     const domAmount = this.readAmountFromDOM();
     if (domAmount > 0) {
       console.log("Montant trouvé dans le DOM:", domAmount);
       return { amount: domAmount };
     }
+
+    // 2. Attendre que le DOM soit chargé (retry)
     const domAmountRetry = await this.waitForDomAmount();
     if (domAmountRetry > 0) return { amount: domAmountRetry };
+
+    // 3. Fallback: montant fixe
     return { amount: this.fixedAmount };
   }
-
-  private waitForDomAmount(maxAttempts = 10): Promise<number> {
+  private waitForDomAmount(maxAttempts: number = 10): Promise<number> {
     return new Promise((resolve) => {
       let attempts = 0;
       const interval = setInterval(() => {
@@ -251,15 +248,24 @@ class MipsPay extends HTMLElement {
     });
   }
 
+  /**
+   * Appelle notre worker Cloudflare qui transmet les cookies Wix
+   * et interroge l'API Wix côté serveur → fonctionne dans tous les contextes.
+   */
   private async fetchCartViaWorkerProxy(): Promise<number> {
     try {
+      // Envoyer l'URL du site dans les paramètres de requête
       const siteUrl = encodeURIComponent(window.location.origin);
       const url = `${WORKER_BASE}/api/cart-total?siteUrl=${siteUrl}`;
+
       const res = await fetch(url, {
         method: "GET",
-        credentials: "omit",
-        headers: { "Content-Type": "application/json" },
+        credentials: "omit", // Important: ne pas envoyer les credentials pour éviter l'erreur CORS
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
+
       if (!res.ok) return 0;
       const data = await res.json();
       const amount = parseFloat(String(data?.amount || 0));
@@ -269,13 +275,16 @@ class MipsPay extends HTMLElement {
       return 0;
     }
   }
-
+  /**
+   * Appels directs aux APIs REST Wix (production, même domaine).
+   */
   private async fetchCartFromWixAPI(): Promise<number> {
     const endpoints = [
       "/_api/wix-ecommerce-storefront-web/api/v1/cart",
       "/_api/stores/v1/cart",
       "/_api/wix-ecommerce-storefront-web/api/cart",
     ];
+
     for (const url of endpoints) {
       try {
         const res = await fetch(url, {
@@ -301,10 +310,15 @@ class MipsPay extends HTMLElement {
     return 0;
   }
 
+  /**
+   * Lit le montant depuis les sélecteurs CSS Wix dans le DOM courant
+   * et dans les iframes same-origin accessibles.
+   */
   private readAmountFromDOM(): number {
     try {
       const bodyText = document.body.innerText;
       const allAmounts = bodyText.match(/(\d+(?:[.,]\d+)?)\s*Ar/g);
+
       if (allAmounts && allAmounts.length > 0) {
         const lastAmountStr = allAmounts[allAmounts.length - 1];
         const match = lastAmountStr.match(/(\d+(?:[.,]\d+)?)/);
@@ -320,10 +334,13 @@ class MipsPay extends HTMLElement {
       return 0;
     }
   }
-
+  /**
+   * Retry DOM + API toutes les 500ms pendant 10s.
+   */
   private waitForCartAmountInDOM() {
     if (this._cartRetryInterval) return;
     let attempts = 0;
+
     this._cartRetryInterval = setInterval(async () => {
       attempts++;
 
@@ -362,6 +379,52 @@ class MipsPay extends HTMLElement {
         this._cartRetryInterval = null;
       }
     }, 500);
+  }
+
+  private isInCrossOriginFrame(): boolean {
+    try {
+      return window.parent !== window && !window.parent.document;
+    } catch {
+      return true;
+    }
+  }
+
+  private _cartPending = false;
+  private getAmountViaPostMessage(): Promise<number> {
+    if (this._cartPending) return Promise.resolve(0);
+    this._cartPending = true;
+    return new Promise((resolve) => {
+      let done = false;
+      const timeout = setTimeout(() => {
+        if (!done) {
+          done = true;
+          this._cartPending = false;
+          resolve(0);
+        }
+      }, 3000);
+      const handler = (ev: MessageEvent) => {
+        if ((ev.data?.type === "wixCart" || ev.data?.cartTotal) && !done) {
+          done = true;
+          this._cartPending = false;
+          clearTimeout(timeout);
+          window.removeEventListener("message", handler);
+          resolve(
+            parseFloat(String(ev.data.cartTotal || ev.data.total || 0)) || 0,
+          );
+        }
+      };
+      window.addEventListener("message", handler);
+      try {
+        window.parent.postMessage(
+          { type: "getCartTotal", source: "mips-payment" },
+          "*",
+        );
+      } catch {
+        this._cartPending = false;
+        clearTimeout(timeout);
+        resolve(0);
+      }
+    });
   }
 
   // ─── Messages ─────────────────────────────────────────────────────────────
@@ -404,10 +467,8 @@ class MipsPay extends HTMLElement {
     if (!this.encryptedCredentials) return null;
     try {
       return await decryptCredentials(this.encryptedCredentials);
-    } catch (e) {
-      console.error("Erreur déchiffrement:", e);
-      this.error =
-        "Erreur de déchiffrement des credentials. Veuillez les reconfigurer dans le panel.";
+    } catch {
+      this.error = "Erreur de déchiffrement des credentials.";
       return null;
     }
   }
@@ -426,6 +487,7 @@ class MipsPay extends HTMLElement {
       this.loading = true;
       this.render();
       this.attachDOMEvents();
+
       this.getWixCartTotal().then(({ amount }) => {
         this.loading = false;
         if (amount > 0) {
@@ -480,35 +542,6 @@ class MipsPay extends HTMLElement {
         return;
       }
 
-      // Validation que le déchiffrement a produit des valeurs sensées
-      const expectedFields = [
-        "id_merchant",
-        "id_entity",
-        "id_operator",
-        "operator_password",
-        "auth_basic_username",
-        "auth_basic_password",
-      ];
-      const hasValidCreds = expectedFields.every(
-        (f) => creds[f] && creds[f].length > 0,
-      );
-      // Détection de valeurs corrompues (chaînes aléatoires > 20 chars)
-      // const looksCorrupted = ["id_merchant", "id_entity", "id_operator"].some(
-      //   (f) =>
-      //     creds[f] &&
-      //     creds[f].length > 20 &&
-      //     /^[A-Za-z0-9]{20,}$/.test(creds[f]),
-      // );
-
-      if (!hasValidCreds) {
-        this.error =
-          "Credentials invalides ou corrompus. Veuillez les reconfigurer dans le panel Wix.";
-        this.loading = false;
-        this.render();
-        this.attachDOMEvents();
-        return;
-      }
-
       const id_order = generateOrderId();
       this.paymentId = id_order;
       const amount = this.effectiveAmount;
@@ -516,45 +549,6 @@ class MipsPay extends HTMLElement {
         `${creds.auth_basic_username}:${creds.auth_basic_password}`,
       );
 
-      const body = {
-        authentify: {
-          id_merchant: creds.id_merchant || "5VTqAZqUoJWMRnrzS2m2dFXUy7HYAnTz",
-          id_entity: creds.id_entity || "ZffP7lOOTO5LcT5a1rqOhbXDDt1z1qJQ",
-          id_operator: creds.id_operator || "XbDEVgg9ZsqljA6xU08Xe5T6ElzxUv3E",
-          operator_password:
-            creds.operator_password || "Z4eHk201ou493h7234cUloy3bfxCqMes",
-        },
-        order: {
-          id_order,
-          currency: this.currency,
-          amount,
-        },
-        request_mode: this.requestMode,
-        touchpoint: "web",
-        iframe_behavior: {
-          custom_redirection_url: `${window.location.origin}/thank-you-page`,
-          language: "FR",
-        },
-        additional_params: [
-          {
-            param_name: "first_name",
-            param_value: this.customerInfo.firstName.trim(),
-          },
-          {
-            param_name: "last_name",
-            param_value: this.customerInfo.lastName.trim(),
-          },
-          {
-            param_name: "phone_number",
-            param_value: this.customerInfo.phone.trim(),
-          },
-          {
-            param_name: "client_email",
-            param_value: this.customerInfo.email.trim(),
-          },
-        ],
-      };
-      console.log("body data :", body);
       const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
@@ -562,17 +556,57 @@ class MipsPay extends HTMLElement {
           Accept: "application/json",
           Authorization: `Basic ${basicAuth}`,
         },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          authentify: {
+            id_merchant: creds.id_merchant,
+            id_entity: creds.id_entity,
+            id_operator: creds.id_operator,
+            operator_password: creds.operator_password,
+          },
+          order: {
+            id_order,
+            currency: this.currency === "Ar" ? "MGA" : this.currency,
+            amount,
+          },
+          request_mode: this.requestMode,
+          touchpoint: "web",
+          iframe_behavior: {
+            custom_redirection_url: `${window.location.origin}/thank-you-page`,
+            language: "FR",
+          },
+          additional_params: [
+            {
+              param_name: "first_name",
+              param_value: this.customerInfo.firstName.trim(),
+            },
+            {
+              param_name: "last_name",
+              param_value: this.customerInfo.lastName.trim(),
+            },
+            {
+              param_name: "phone_number",
+              param_value: this.customerInfo.phone.trim(),
+            },
+            {
+              param_name: "client_email",
+              param_value: this.customerInfo.email.trim(),
+            },
+          ],
+        }),
       });
 
       const raw = await res.text();
+      try {
+        const parsed = JSON.parse(raw);
+        console.log("Réponse MiPS:", JSON.stringify(parsed, null, 2));
+      } catch (e) {
+        console.log("Réponse MiPS (non-JSON):", raw.substring(0, 500));
+      }
       let mipsData: any;
-
       try {
         mipsData = JSON.parse(raw);
-        console.log("Réponse MiPS:", JSON.stringify(mipsData, null, 2));
       } catch {
-        console.log("Réponse MiPS (non-JSON):", raw.substring(0, 500));
+        console.error("Réponse non-JSON reçue:", raw.substring(0, 500));
         if (raw.includes("<iframe") || raw.includes("payment_zone")) {
           const iframeMatch = raw.match(/<iframe[^>]+src=["']([^"']+)["']/i);
           if (iframeMatch?.[1]) {
@@ -586,7 +620,7 @@ class MipsPay extends HTMLElement {
           }
         }
         throw new Error(
-          `Le serveur a retourné une réponse invalide (HTTP ${res.status})`,
+          `Le serveur a retourné une réponse invalide (${res.status})`,
         );
       }
 
@@ -605,13 +639,11 @@ class MipsPay extends HTMLElement {
 
       if (opStatus !== "success") {
         throw new Error(
-          mipsData.answer?.message ||
-            mipsData.message ||
-            "Erreur création paiement MiPS",
+          mipsData.answer?.message || "Erreur création paiement MiPS",
         );
       }
       if (!paymentZoneData) {
-        throw new Error("Aucune zone de paiement retournée par MiPS");
+        throw new Error("Aucune zone de paiement retournée");
       }
 
       const iframeMatch = paymentZoneData.match(
@@ -633,42 +665,14 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
-  // ─── Succès / Échec ───────────────────────────────────────────────────────
+  // ─── Affichage ────────────────────────────────────────────────────────────
 
-  private handlePaymentSuccess() {
-    this.showIframe = false;
-    if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
-    this.iframeUrl = "";
-    this.error = "";
-    const div = document.createElement("div");
-    div.style.cssText =
-      "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
-    div.innerHTML = `
-      <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;font-family:system-ui;">
-        <div style="font-size:48px;color:#16a34a;">✓</div>
-        <h2 style="margin:12px 0 8px;color:#1E293B">Paiement réussi !</h2>
-        <p style="color:#64748B">Votre paiement de ${this.getDisplayAmount()} a été traité avec succès.</p>
-        <p style="font-size:12px;color:#94A3B8;margin-top:6px">Référence : ${this.paymentId}</p>
-        <button onclick="this.closest('[style*=fixed]').remove()"
-          style="margin-top:20px;padding:10px 24px;background:#2563EB;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">
-          Fermer
-        </button>
-      </div>`;
-    document.body.appendChild(div);
-    this.render();
-    this.attachDOMEvents();
+  private getDisplayAmount(): string {
+    const amt = this.effectiveAmount;
+    return amt > 0
+      ? `${amt.toFixed(2)} ${this.currency}`
+      : `-- ${this.currency}`;
   }
-
-  private handlePaymentFailed() {
-    this.showIframe = false;
-    if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
-    this.iframeUrl = "";
-    this.error = "Le paiement a échoué. Veuillez réessayer.";
-    this.render();
-    this.attachDOMEvents();
-  }
-
-  // ─── Événements DOM ───────────────────────────────────────────────────────
 
   private attachDOMEvents() {
     const replace = (id: string, fn: () => void) => {
@@ -719,7 +723,38 @@ class MipsPay extends HTMLElement {
     }
   }
 
-  // ─── Rendu ────────────────────────────────────────────────────────────────
+  private handlePaymentSuccess() {
+    this.showIframe = false;
+    if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
+    this.iframeUrl = "";
+    this.error = "";
+    const div = document.createElement("div");
+    div.style.cssText =
+      "position:fixed;inset:0;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;z-index:999999;";
+    div.innerHTML = `
+      <div style="background:#fff;border-radius:16px;padding:32px;text-align:center;max-width:380px;width:90%;font-family:system-ui;">
+        <div style="font-size:48px;color:#16a34a;">✓</div>
+        <h2 style="margin:12px 0 8px;color:#1E293B">Paiement réussi !</h2>
+        <p style="color:#64748B">Votre paiement de ${this.getDisplayAmount()} a été traité avec succès.</p>
+        <p style="font-size:12px;color:#94A3B8;margin-top:6px">Référence : ${this.paymentId}</p>
+        <button onclick="this.closest('[style*=fixed]').remove()"
+          style="margin-top:20px;padding:10px 24px;background:#2563EB;color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:14px;">
+          Fermer
+        </button>
+      </div>`;
+    document.body.appendChild(div);
+    this.render();
+    this.attachDOMEvents();
+  }
+
+  private handlePaymentFailed() {
+    this.showIframe = false;
+    if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
+    this.iframeUrl = "";
+    this.error = "Le paiement a échoué. Veuillez réessayer.";
+    this.render();
+    this.attachDOMEvents();
+  }
 
   render() {
     const displayAmount = this.getDisplayAmount();
@@ -892,7 +927,7 @@ class MipsPay extends HTMLElement {
             </div>
             <div class="form-group">
               <label>Téléphone *</label>
-              <input id="mips-phone" type="tel" placeholder="+261 34 xx xxx xx" autocomplete="tel" />
+              <input id="mips-phone" type="tel" placeholder="+230 5xxx xxxx" autocomplete="tel" />
             </div>
             <div class="form-group">
               <label>Email <span style="color:#94A3B8;font-weight:400;text-transform:none">(optionnel)</span></label>
