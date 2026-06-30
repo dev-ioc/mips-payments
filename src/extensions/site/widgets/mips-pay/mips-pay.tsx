@@ -42,23 +42,19 @@ async function decryptCredentials(
     console.log("🔐 Déchiffrement des credentials...");
     console.log("📝 Longueur du texte chiffré:", ciphertext.length);
 
-    // ✅ Étape 1: Convertir base64url → base64 standard
     let base64 = ciphertext.replace(/-/g, "+").replace(/_/g, "/");
 
-    // ✅ Étape 2: Ajouter le padding si nécessaire
     while (base64.length % 4 !== 0) {
       base64 += "=";
     }
 
     console.log("📝 Base64 après conversion:", base64.substring(0, 50) + "...");
 
-    // ✅ Étape 3: Décoder le base64
     let binaryString: string;
     try {
       binaryString = atob(base64);
     } catch (e) {
       console.error("❌ Erreur atob:", e);
-      // Tentative avec une autre méthode
       const bytes = Uint8Array.from(base64, (c) => c.charCodeAt(0));
       binaryString = String.fromCharCode(...bytes);
     }
@@ -68,7 +64,6 @@ async function decryptCredentials(
       combined[i] = binaryString.charCodeAt(i);
     }
 
-    // ✅ Étape 4: Extraire l'IV (12 premiers octets)
     if (combined.length < 13) {
       console.error("❌ Texte chiffré trop court:", combined.length);
       return null;
@@ -218,8 +213,6 @@ class MipsPay extends HTMLElement {
       : `-- ${displayCurrency}`;
   }
 
-  // ─── Cart / DOM ───────────────────────────────────────────────────────────
-
   private observeCartChanges() {
     const observer = new MutationObserver(() => {
       const newAmount = this.readAmountFromDOM();
@@ -254,7 +247,6 @@ class MipsPay extends HTMLElement {
     this.listenToMessages();
     this.observeCartChanges();
 
-    // ✅ Log pour déboguer
     console.log("🔍 Widget MiPS initialisé");
     console.log(
       "📝 Encrypted credentials présent:",
@@ -449,8 +441,6 @@ class MipsPay extends HTMLElement {
     }, 500);
   }
 
-  // ─── Messages ─────────────────────────────────────────────────────────────
-
   private listenToMessages() {
     window.addEventListener("message", async (ev) => {
       if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0) {
@@ -482,8 +472,6 @@ class MipsPay extends HTMLElement {
         this.handlePaymentFailed();
     });
   }
-
-  // ─── Paiement ─────────────────────────────────────────────────────────────
 
   private handlePay() {
     if (!this.hasCredentials) {
@@ -520,8 +508,6 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
-  // ─── PROCESS PAYMENT ─────────────────────────────────────────────
-
   private async processPayment() {
     // Validation du formulaire client
     const errors: string[] = [];
@@ -546,7 +532,6 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
 
     try {
-      // ✅ Déchiffrer les credentials
       const creds = await decryptCredentials(this.encryptedCredentials);
       if (!creds) {
         this.error =
@@ -565,7 +550,6 @@ class MipsPay extends HTMLElement {
       this.paymentId = id_order;
       const amount = this.effectiveAmount;
 
-      // ✅ Construire le body COMPLET selon la documentation MiPS
       const body = {
         authentify: {
           id_merchant: creds.id_merchant,
@@ -606,18 +590,17 @@ class MipsPay extends HTMLElement {
 
       console.log("📤 Envoi à MiPS:", JSON.stringify(body, null, 2));
 
-      // ✅ Authentification Basic
-      const basicAuth = btoa(
-        `${creds.auth_basic_username}:${creds.auth_basic_password}`,
-      );
+      // const basicAuth = btoa(
+      //   `${creds.auth_basic_username}:${creds.auth_basic_password}`,
+      // );
 
-      // ✅ Envoyer au proxy
       const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          Authorization: `Basic ${basicAuth}`,
+          Authorization: `Basic dGVzdF93aXhfbWVyY2hhbnRfNDA2OTcxOjczYThlMmY0YmY4N2E3ZjNmMTZj`,
+          "User-Agent": "",
         },
         body: JSON.stringify(body),
       });
@@ -690,8 +673,6 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
-  // ─── Succès / Échec ───────────────────────────────────────────────────────
-
   private handlePaymentSuccess() {
     this.showIframe = false;
     if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
@@ -724,8 +705,6 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachDOMEvents();
   }
-
-  // ─── Événements DOM ───────────────────────────────────────────────────────
 
   private attachDOMEvents() {
     const replace = (id: string, fn: () => void) => {
