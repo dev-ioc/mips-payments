@@ -2,6 +2,7 @@
  * mips-pay.ts — Widget de paiement MiPS pour Wix Studio
  */
 
+const MIPS_PROXY = "https://mips-payments-proxy.dev-mdg.workers.dev";
 const WORKER_BASE = "https://features-mips-payments.dev-mdg.workers.dev";
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
@@ -41,19 +42,23 @@ async function decryptCredentials(
     console.log("🔐 Déchiffrement des credentials...");
     console.log("📝 Longueur du texte chiffré:", ciphertext.length);
 
+    // ✅ Étape 1: Convertir base64url → base64 standard
     let base64 = ciphertext.replace(/-/g, "+").replace(/_/g, "/");
 
+    // ✅ Étape 2: Ajouter le padding si nécessaire
     while (base64.length % 4 !== 0) {
       base64 += "=";
     }
 
     console.log("📝 Base64 après conversion:", base64.substring(0, 50) + "...");
 
+    // ✅ Étape 3: Décoder le base64
     let binaryString: string;
     try {
       binaryString = atob(base64);
     } catch (e) {
       console.error("❌ Erreur atob:", e);
+      // Tentative avec une autre méthode
       const bytes = Uint8Array.from(base64, (c) => c.charCodeAt(0));
       binaryString = String.fromCharCode(...bytes);
     }
@@ -63,6 +68,7 @@ async function decryptCredentials(
       combined[i] = binaryString.charCodeAt(i);
     }
 
+    // ✅ Étape 4: Extraire l'IV (12 premiers octets)
     if (combined.length < 13) {
       console.error("❌ Texte chiffré trop court:", combined.length);
       return null;
@@ -212,6 +218,8 @@ class MipsPay extends HTMLElement {
       : `-- ${displayCurrency}`;
   }
 
+  // ─── Cart / DOM ───────────────────────────────────────────────────────────
+
   private observeCartChanges() {
     const observer = new MutationObserver(() => {
       const newAmount = this.readAmountFromDOM();
@@ -246,6 +254,7 @@ class MipsPay extends HTMLElement {
     this.listenToMessages();
     this.observeCartChanges();
 
+    // ✅ Log pour déboguer
     console.log("🔍 Widget MiPS initialisé");
     console.log(
       "📝 Encrypted credentials présent:",
@@ -440,6 +449,8 @@ class MipsPay extends HTMLElement {
     }, 500);
   }
 
+  // ─── Messages ─────────────────────────────────────────────────────────────
+
   private listenToMessages() {
     window.addEventListener("message", async (ev) => {
       if (ev.data?.type === "wixCartUpdated" && this._veloAmount === 0) {
@@ -471,6 +482,8 @@ class MipsPay extends HTMLElement {
         this.handlePaymentFailed();
     });
   }
+
+  // ─── Paiement ─────────────────────────────────────────────────────────────
 
   private handlePay() {
     if (!this.hasCredentials) {
@@ -507,6 +520,8 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
+  // ─── PROCESS PAYMENT ─────────────────────────────────────────────
+
   private async processPayment() {
     // Validation du formulaire client
     const errors: string[] = [];
@@ -531,6 +546,7 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
 
     try {
+      // ✅ Déchiffrer les credentials
       const creds = await decryptCredentials(this.encryptedCredentials);
       if (!creds) {
         this.error =
@@ -593,13 +609,7 @@ class MipsPay extends HTMLElement {
         `${creds.auth_basic_username}:${creds.auth_basic_password}`,
       );
 
-      // ⚠️ Appel DIRECT à l'API MiPS, sans passer par le proxy Cloudflare.
-      // Attention : ceci échouera très probablement avec une erreur CORS,
-      // l'API MiPS n'étant pas nécessairement configurée pour accepter
-      // des requêtes cross-origin depuis un domaine Wix arbitraire.
-      // Note : le header "User-Agent" n'est de toute façon pas modifiable
-      // depuis un fetch() de navigateur (header interdit), il a donc été retiré.
-      const res = await fetch("https://api.mips.mu/api/load_payment_zone", {
+      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
