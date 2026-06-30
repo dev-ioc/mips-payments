@@ -2,7 +2,6 @@
  * mips-pay.ts — Widget de paiement MiPS pour Wix Studio
  */
 
-const MIPS_PROXY = "https://mips-payments-proxy.dev-mdg.workers.dev";
 const WORKER_BASE = "https://features-mips-payments.dev-mdg.workers.dev";
 const DERIVE_PASSPHRASE = "mips-wix-secure-2025";
 
@@ -590,17 +589,22 @@ class MipsPay extends HTMLElement {
 
       console.log("📤 Envoi à MiPS:", JSON.stringify(body, null, 2));
 
-      // const basicAuth = btoa(
-      //   `${creds.auth_basic_username}:${creds.auth_basic_password}`,
-      // );
+      const basicAuth = btoa(
+        `${creds.auth_basic_username}:${creds.auth_basic_password}`,
+      );
 
-      const res = await fetch(`${MIPS_PROXY}/api/load_payment_zone`, {
+      // ⚠️ Appel DIRECT à l'API MiPS, sans passer par le proxy Cloudflare.
+      // Attention : ceci échouera très probablement avec une erreur CORS,
+      // l'API MiPS n'étant pas nécessairement configurée pour accepter
+      // des requêtes cross-origin depuis un domaine Wix arbitraire.
+      // Note : le header "User-Agent" n'est de toute façon pas modifiable
+      // depuis un fetch() de navigateur (header interdit), il a donc été retiré.
+      const res = await fetch("https://api.mips.mu/api/load_payment_zone", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
-          Authorization: `Basic dGVzdF93aXhfbWVyY2hhbnRfNDA2OTcxOjczYThlMmY0YmY4N2E3ZjNmMTZj`,
-          "User-Agent": "",
+          Authorization: `Basic ${basicAuth}`,
         },
         body: JSON.stringify(body),
       });
@@ -673,6 +677,8 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
+  // ─── Succès / Échec ───────────────────────────────────────────────────────
+
   private handlePaymentSuccess() {
     this.showIframe = false;
     if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
@@ -705,6 +711,8 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachDOMEvents();
   }
+
+  // ─── Événements DOM ───────────────────────────────────────────────────────
 
   private attachDOMEvents() {
     const replace = (id: string, fn: () => void) => {
