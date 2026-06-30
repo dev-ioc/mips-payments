@@ -483,8 +483,6 @@ class MipsPay extends HTMLElement {
     });
   }
 
-  // ─── Paiement ─────────────────────────────────────────────────────────────
-
   private handlePay() {
     if (!this.hasCredentials) {
       this.error = "Configuration MiPS non configurée.";
@@ -520,8 +518,6 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
-  // ─── PROCESS PAYMENT ─────────────────────────────────────────────
-
   private async processPayment() {
     // Validation du formulaire client
     const errors: string[] = [];
@@ -546,7 +542,6 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
 
     try {
-      // ✅ Déchiffrer les credentials
       const creds = await decryptCredentials(this.encryptedCredentials);
       if (!creds) {
         this.error =
