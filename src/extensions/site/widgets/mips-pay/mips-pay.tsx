@@ -29,36 +29,24 @@ async function deriveKey(passphrase: string): Promise<CryptoKey> {
   );
 }
 
-// ✅ Fonction corrigée avec meilleure gestion du base64url
 async function decryptCredentials(
   ciphertext: string,
 ): Promise<Record<string, string> | null> {
   try {
     if (!ciphertext || ciphertext.trim() === "") {
-      console.error("❌ Credentials vides");
       return null;
     }
 
-    console.log("🔐 Déchiffrement des credentials...");
-    console.log("📝 Longueur du texte chiffré:", ciphertext.length);
-
-    // ✅ Étape 1: Convertir base64url → base64 standard
     let base64 = ciphertext.replace(/-/g, "+").replace(/_/g, "/");
 
-    // ✅ Étape 2: Ajouter le padding si nécessaire
     while (base64.length % 4 !== 0) {
       base64 += "=";
     }
 
-    console.log("📝 Base64 après conversion:", base64.substring(0, 50) + "...");
-
-    // ✅ Étape 3: Décoder le base64
     let binaryString: string;
     try {
       binaryString = atob(base64);
     } catch (e) {
-      console.error("❌ Erreur atob:", e);
-      // Tentative avec une autre méthode
       const bytes = Uint8Array.from(base64, (c) => c.charCodeAt(0));
       binaryString = String.fromCharCode(...bytes);
     }
@@ -68,24 +56,13 @@ async function decryptCredentials(
       combined[i] = binaryString.charCodeAt(i);
     }
 
-    // ✅ Étape 4: Extraire l'IV (12 premiers octets)
     if (combined.length < 13) {
-      console.error("❌ Texte chiffré trop court:", combined.length);
       return null;
     }
 
     const iv = combined.slice(0, 12);
     const encryptedData = combined.slice(12);
 
-    console.log(
-      "📊 IV (hex):",
-      Array.from(iv)
-        .map((b) => b.toString(16).padStart(2, "0"))
-        .join(""),
-    );
-    console.log("📊 Données chiffrées:", encryptedData.length, "octets");
-
-    // ✅ Étape 5: Déchiffrer
     const key = await deriveKey(DERIVE_PASSPHRASE);
     let decrypted: ArrayBuffer;
     try {
@@ -95,17 +72,13 @@ async function decryptCredentials(
         encryptedData,
       );
     } catch (e) {
-      console.error("❌ Erreur de déchiffrement:", e);
       return null;
     }
 
     const decryptedText = new TextDecoder().decode(decrypted);
-    console.log("✅ Déchiffrement réussi");
 
     const credentials = JSON.parse(decryptedText);
-    console.log("📋 Credentials trouvés:", Object.keys(credentials));
 
-    // ✅ Validation des credentials
     const requiredFields = [
       "id_merchant",
       "id_entity",
@@ -117,13 +90,11 @@ async function decryptCredentials(
 
     const missingFields = requiredFields.filter((f) => !credentials[f]);
     if (missingFields.length > 0) {
-      console.error("❌ Champs manquants:", missingFields);
       return null;
     }
 
     return credentials;
   } catch (error) {
-    console.error("❌ Erreur de déchiffrement:", error);
     return null;
   }
 }
@@ -218,19 +189,10 @@ class MipsPay extends HTMLElement {
       : `-- ${displayCurrency}`;
   }
 
-  // ─── Cart / DOM ───────────────────────────────────────────────────────────
-
   private observeCartChanges() {
     const observer = new MutationObserver(() => {
       const newAmount = this.readAmountFromDOM();
       if (newAmount > 0 && newAmount !== this._cartAmount) {
-        console.log(
-          "🔄 Montant du panier changé:",
-          newAmount,
-          "(ancien:",
-          this._cartAmount,
-          ")",
-        );
         this._cartAmount = newAmount;
         this.render();
         this.attachDOMEvents();
@@ -253,20 +215,6 @@ class MipsPay extends HTMLElement {
     if (this.amountSource === "cart") this.loadCartAmount();
     this.listenToMessages();
     this.observeCartChanges();
-
-    // ✅ Log pour déboguer
-    console.log("🔍 Widget MiPS initialisé");
-    console.log(
-      "📝 Encrypted credentials présent:",
-      !!this.encryptedCredentials,
-    );
-    if (this.encryptedCredentials) {
-      console.log("📝 Longueur:", this.encryptedCredentials.length);
-      console.log(
-        "📝 Début:",
-        this.encryptedCredentials.substring(0, 30) + "...",
-      );
-    }
   }
 
   disconnectedCallback() {
@@ -350,7 +298,6 @@ class MipsPay extends HTMLElement {
       const amount = parseFloat(String(data?.amount || 0));
       return isNaN(amount) ? 0 : amount;
     } catch (error) {
-      console.error("Erreur proxy worker:", error);
       return 0;
     }
   }
@@ -379,9 +326,7 @@ class MipsPay extends HTMLElement {
           const parsed = parseFloat(String(total));
           if (!isNaN(parsed) && parsed > 0) return parsed;
         }
-      } catch {
-        /* tente le suivant */
-      }
+      } catch {}
     }
     return 0;
   }
@@ -395,7 +340,6 @@ class MipsPay extends HTMLElement {
         const match = lastAmountStr.match(/(\d+(?:[.,]\d+)?)/);
         if (match) {
           const amount = parseFloat(match[1].replace(",", "."));
-          console.log(`✅ Montant trouvé: ${amount} Ar`);
           return amount;
         }
       }
@@ -448,8 +392,6 @@ class MipsPay extends HTMLElement {
       }
     }, 500);
   }
-
-  // ─── Messages ─────────────────────────────────────────────────────────────
 
   private listenToMessages() {
     window.addEventListener("message", async (ev) => {
@@ -519,7 +461,6 @@ class MipsPay extends HTMLElement {
   }
 
   private async processPayment() {
-    // Validation du formulaire client
     const errors: string[] = [];
     if (!this.customerInfo.firstName.trim())
       errors.push("Le prénom est requis");
@@ -551,11 +492,6 @@ class MipsPay extends HTMLElement {
         this.attachDOMEvents();
         return;
       }
-
-      console.log("✅ Credentials déchiffrés avec succès");
-      console.log("🔑 Merchant ID:", creds.id_merchant);
-      console.log("🏢 Entity ID:", creds.id_entity);
-
       const id_order = generateOrderId();
       this.paymentId = id_order;
       const amount = this.effectiveAmount;
@@ -597,8 +533,6 @@ class MipsPay extends HTMLElement {
           },
         ],
       };
-
-      console.log("📤 Envoi à MiPS:", JSON.stringify(body, null, 2));
 
       const basicAuth = btoa(
         `${creds.auth_basic_username}:${creds.auth_basic_password}`,
@@ -682,8 +616,6 @@ class MipsPay extends HTMLElement {
     this.attachDOMEvents();
   }
 
-  // ─── Succès / Échec ───────────────────────────────────────────────────────
-
   private handlePaymentSuccess() {
     this.showIframe = false;
     if (this.iframeUrl.startsWith("blob:")) URL.revokeObjectURL(this.iframeUrl);
@@ -716,8 +648,6 @@ class MipsPay extends HTMLElement {
     this.render();
     this.attachDOMEvents();
   }
-
-  // ─── Événements DOM ───────────────────────────────────────────────────────
 
   private attachDOMEvents() {
     const replace = (id: string, fn: () => void) => {
@@ -767,8 +697,6 @@ class MipsPay extends HTMLElement {
       }
     }
   }
-
-  // ─── Rendu ────────────────────────────────────────────────────────────────
 
   render() {
     const displayAmount = this.getDisplayAmount();

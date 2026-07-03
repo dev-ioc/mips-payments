@@ -1,10 +1,4 @@
-import React, {
-  type FC,
-  useState,
-  useEffect,
-  useCallback,
-  useRef,
-} from "react";
+import React, { type FC, useState, useEffect, useCallback } from "react";
 import { widget } from "@wix/editor";
 import {
   SidePanel,
@@ -19,7 +13,6 @@ import {
   SectionHelper,
   Button,
   Loader,
-  IconButton,
 } from "@wix/design-system";
 import "@wix/design-system/styles.global.css";
 import { DeleteIcon, Key, Settings } from "lucide-react";
@@ -61,8 +54,6 @@ async function encryptCredentials(data: object): Promise<string> {
   const combined = new Uint8Array(iv.byteLength + encrypted.byteLength);
   combined.set(iv, 0);
   combined.set(new Uint8Array(encrypted), iv.byteLength);
-  // ✅ base64url : remplace +→- /→_ et retire le padding =
-  // Évite la corruption par Wix lors du stockage via widget.setProp()
   return btoa(String.fromCharCode(...combined))
     .replace(/\+/g, "-")
     .replace(/\//g, "_")
@@ -73,7 +64,6 @@ async function decryptCredentials(
   ciphertext: string,
 ): Promise<Record<string, string>> {
   const key = await deriveKey(DERIVE_PASSPHRASE);
-  // ✅ Reconvertir base64url → base64 standard avant décodage
   const base64 = ciphertext
     .replace(/-/g, "+")
     .replace(/_/g, "/")
@@ -122,7 +112,7 @@ const EMPTY_CREDS: CredentialsForm = {
 };
 
 const CURRENCY_OPTIONS = [
-  { id: "MGA", value: "MGA — Ariary malgache" },
+  // { id: "MGA", value: "MGA — Ariary malgache" },
   { id: "MUR", value: "MUR — Roupie mauricienne" },
   { id: "USD", value: "USD — Dollar américain" },
   { id: "EUR", value: "EUR — Euro" },
@@ -253,7 +243,6 @@ const Panel: FC = () => {
             auth_basic_password: dec.auth_basic_password || "",
           });
         } catch {
-          // Credentials stockés mais non déchiffrables (ancienne version)
           setCredsSaved(true);
         }
       }
